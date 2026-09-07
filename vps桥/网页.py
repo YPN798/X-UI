@@ -107,32 +107,44 @@ function 挂链(u){
   if(!a||!u) return;
   a.href=u; a.style.display="inline-block";
 }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])); }
 function 填(d){
   挂链(d.panel_url);
   document.getElementById("概").innerHTML =
-    "SOCKS <b>"+d.listen+"</b> · 管理 <b>"+d.web+"</b> · 健康 "+d.健康+"/"+d.总数+
-    " · 验活 <b>"+(d.check_host||"www.dola.com")+":"+(d.check_port||443)+"</b>"+
-    " · 上行 "+(d.上行文||"0 B")+" · 下行 "+(d.下行文||"0 B")+
-    (d.上次补 ? "<br><span class=次>"+d.上次补+"</span>" : "");
-  const f=document.getElementById("设");
-  f.mode.value=d.mode; f.sticky.value=d.sticky==="关"?"":d.sticky;
-  f.pool_size.value=d.pool_size; f.fail_n.value=d.fail_n;
-  f.check_interval.value=d.check_interval; f.check_conc.value=d.check_conc||16;
-  f.fetch_url.value=d.fetch_url||""; f.fetch_cmd.value=d.fetch_cmd||"";
+    "SOCKS <b>"+esc(d.listen)+"</b> · 管理 <b>"+esc(d.web)+"</b> · 健康 "+(d.健康||0)+"/"+(d.总数||0)+
+    " · 验活 <b>"+esc(d.check_host||"www.dola.com")+":"+(d.check_port||443)+"</b>"+
+    " · 上行 "+esc(d.上行文||"0 B")+" · 下行 "+esc(d.下行文||"0 B")+
+    (d.上次补 ? "<br><span class=次>"+esc(d.上次补)+"</span>" : "");
   const tb=document.getElementById("表");
   tb.innerHTML="";
-  (d.池||[]).forEach(p=>{
-    const tr=document.createElement("tr");
-    const 态=p.启用?(p.健康?"<span class=好>健康</span>":"<span class=坏>摘除</span>"):"<span class=次>停</span>";
-    tr.innerHTML="<td>"+p.地址+" <span class=徽章>"+p.方案+"</span></td><td>"+态+
-      "</td><td>"+p.连接+"</td><td>"+(p.上行文||"0 B")+"</td><td>"+(p.下行文||"0 B")+
-      "</td><td>"+p.来源+"</td><td class=次>"+(p.上次错误||p.上次切换||"")+"</td><td></td>";
-    const b=document.createElement("button");
-    b.className="红"; b.textContent="删除";
-    b.onclick=async()=>{ await api("/api/del",{id:p.号}); 刷(); };
-    tr.lastChild.appendChild(b);
-    tb.appendChild(tr);
+  const 列=d.池||d.proxies||[];
+  列.forEach(p=>{
+    try{
+      const tr=document.createElement("tr");
+      const 态=p.启用?(p.健康?"<span class=好>健康</span>":"<span class=坏>摘除</span>"):"<span class=次>停</span>";
+      const 说=p.上次错误||p.上次切换||"";
+      tr.innerHTML="<td>"+esc(p.地址)+" <span class=徽章>"+esc(p.方案)+"</span></td><td>"+态+
+        "</td><td>"+(p.连接||0)+"</td><td>"+esc(p.上行文||"0 B")+"</td><td>"+esc(p.下行文||"0 B")+
+        "</td><td>"+esc(p.来源)+"</td><td class=次></td><td></td>";
+      tr.cells[6].textContent=说;
+      const b=document.createElement("button");
+      b.className="红"; b.textContent="删除";
+      b.onclick=async()=>{ await api("/api/del",{id:p.号||p.id}); 刷(); };
+      tr.cells[7].appendChild(b);
+      tb.appendChild(tr);
+    }catch(e){ console.warn(e); }
   });
+  try{
+    const f=document.getElementById("设");
+    if(f.mode) f.mode.value=d.mode||"round_robin";
+    if(f.sticky) f.sticky.value=d.sticky==="关"?"":(d.sticky||"");
+    if(f.pool_size) f.pool_size.value=d.pool_size;
+    if(f.fail_n) f.fail_n.value=d.fail_n;
+    if(f.check_interval) f.check_interval.value=d.check_interval;
+    if(f.check_conc) f.check_conc.value=d.check_conc||16;
+    if(f.fetch_url) f.fetch_url.value=d.fetch_url||"";
+    if(f.fetch_cmd) f.fetch_cmd.value=d.fetch_cmd||"";
+  }catch(e){ console.warn(e); }
 }
 async function 刷(){ 填(await api("/api/status")); }
 document.getElementById("设").onsubmit=async e=>{
@@ -439,7 +451,9 @@ async def 处理管理(读, 写, 池子: 池) -> None:
             _html(写, 页)
         elif 法 == "GET" and 路 == "/api/status":
             身 = 池子.总览()
+            身["ok"] = True
             身["panel_url"] = 面板地址(头)
+            身["proxies"] = 身.get("池") or []
             _json(写, 200, 身)
         elif 法 == "POST" and 路 == "/api/add":
             串 = str(数据.get("串") or "")
