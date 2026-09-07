@@ -144,7 +144,7 @@
     }
   ],
   "routing": {
-    "domainStrategy": "AsIs",
+    "domainStrategy": "IPIfNonMatch",
     "rules": [
       {
         "type": "field",
@@ -162,7 +162,8 @@
         "domain": [
           "full:www.dola.com",
           "full:dola.com",
-          "full:wss-normal-i18n.dola.com"
+          "full:wss-normal-i18n.dola.com",
+          "domain:dola.com"
         ],
         "outboundTag": "socks-proxy"
       },

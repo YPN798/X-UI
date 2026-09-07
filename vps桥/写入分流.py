@@ -12,7 +12,12 @@ from pathlib import Path
     Path("/usr/local/x-ui/bin/config.json"),
     Path("/usr/local/x-ui/bin/config.json.bak"),
 )
-域 = ["full:www.dola.com", "full:dola.com", "full:wss-normal-i18n.dola.com"]
+域 = [
+    "full:www.dola.com",
+    "full:dola.com",
+    "full:wss-normal-i18n.dola.com",
+    "domain:dola.com",
+]
 出站 = {
     "tag": "socks-proxy",
     "protocol": "socks",
@@ -42,6 +47,7 @@ def 写入(p: Path | None = None) -> str:
     if not isinstance(rt, dict):
         rt = {}
         d["routing"] = rt
+    rt["domainStrategy"] = "IPIfNonMatch"
     rules = [r for r in (rt.get("rules") or []) if isinstance(r, dict)]
     rules = [r for r in rules if r.get("outboundTag") != "socks-proxy"]
     插 = {"type": "field", "domain": 域, "outboundTag": "socks-proxy"}

@@ -2832,7 +2832,7 @@ srv='{ "address": "127.0.0.1", "port": 41000 }'
 # 走代理的域名。默认最低消耗：生成接口 /chat/completion 和 launch/setting
 # 都在 www.dola.com，HTTPS 只能按主机分流，不能按路径只代理这一条。
 # WS 同属生成链路。其余域名走 VPS 本机 IP。
-local def_proxy='full:www.dola.com,full:dola.com,full:wss-normal-i18n.dola.com'
+local def_proxy='full:www.dola.com,full:dola.com,full:wss-normal-i18n.dola.com,domain:dola.com'
 local proxy_dom=${XUI_PROXY_DOMAIN:-$def_proxy}
 local pd
 pd=$(d2j "$proxy_dom")
@@ -2874,7 +2874,7 @@ cat > "$out" <<EOF
       "settings": { "domainStrategy": "UseIPv6v4" }, "proxySettings": { "tag": "socks5-warp" } }
   ],
   "routing": {
-    "domainStrategy": "AsIs",
+    "domainStrategy": "IPIfNonMatch",
     "rules": [
       { "type": "field", "inboundTag": [ "api" ], "outboundTag": "api" },
       { "type": "field", "port": "443", "network": "udp", "outboundTag": "blocked" },
