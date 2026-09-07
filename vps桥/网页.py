@@ -81,7 +81,7 @@ th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--线);font-si
     <label>加一条（socks5://用户:密码@主机:端口 或 IP|端口|用户|密码，可多行）
       <textarea name="串" placeholder="socks5://user:pass@1.2.3.4:1080"></textarea>
     </label>
-    <p><button type="submit">加入池</button></p>
+    <p><button type="submit">加入池</button> <button type="button" class="红" id="清空">一键删除全部</button></p>
   </form>
 </div>
 <div class="卡">
@@ -154,6 +154,11 @@ document.getElementById("加").onsubmit=async e=>{
   刷();
 };
 document.getElementById("补").onclick=async()=>{ await api("/api/fill",{}); 刷(); };
+document.getElementById("清空").onclick=async()=>{
+  if(!confirm("确定删除池里全部代理？")) return;
+  await api("/api/clear",{});
+  刷();
+};
 document.getElementById("退").onclick=async()=>{ await api("/api/logout",{}); location.href="/"; };
 刷(); setInterval(刷, 4000);
 </script>
@@ -451,6 +456,9 @@ async def 处理管理(读, 写, 池子: 池) -> None:
         elif 法 == "POST" and 路 == "/api/del":
             ok = await 池子.删(str(数据.get("号") or 数据.get("id") or ""))
             _json(写, 200, {"ok": ok})
+        elif 法 == "POST" and 路 == "/api/clear":
+            n = await 池子.清空()
+            _json(写, 200, {"ok": True, "n": n})
         elif 法 == "POST" and 路 == "/api/set":
             数据.pop("pass", None)
             数据.pop("web_pass", None)

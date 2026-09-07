@@ -229,6 +229,15 @@ class 池:
                 return True
             return False
 
+    async def 清空(self) -> int:
+        async with self.锁:
+            n = len(self.条们)
+            self.条们 = []
+            self.粘 = {}
+            if n:
+                self.落盘()
+            return n
+
     async def 改设(self, 补: dict[str, Any]) -> None:
         async with self.锁:
             for k in ("mode", "sticky", "fetch_url", "fetch_cmd"):
