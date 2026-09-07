@@ -7,6 +7,7 @@ import asyncio
 import base64
 import logging
 import socket
+import ssl
 import struct
 
 from 池 import 池, 条
@@ -145,14 +146,21 @@ async def _http握手(读, 写, 一: 条, 目标主: str, 目标口: int) -> Non
         raise OSError(f"上游 HTTP CONNECT 失败 {首[:80]}")
 
 
-async def 验一条(一: 条, 秒: float) -> None:
-    """只验上游握手：经它 CONNECT 1.1.1.1:443。"""
-    读, 写 = await 经上游连(一, "1.1.1.1", 443, 秒)
+async def 验一条(一: 条, 秒: float, 主: str = "www.dola.com", 口: int = 443) -> None:
+    """经上游 CONNECT 目标并握手 TLS，默认验 www.dola.com，不是 1.1.1.1。"""
+    读, 写 = await 经上游连(一, 主, 口, 秒)
     try:
-        写.close()
-        await 写.wait_closed()
-    except Exception:
-        pass
+        if hasattr(写, "start_tls"):
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            await asyncio.wait_for(写.start_tls(ctx, server_hostname=主), timeout=秒)
+    finally:
+        try:
+            写.close()
+            await 写.wait_closed()
+        except Exception:
+            pass
 
 
 async def 处理客户(读: asyncio.StreamReader, 写: asyncio.StreamWriter, 池子: 池) -> None:
@@ -250,6 +258,8 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
         间隔 = max(8, int(池子.设.get("check_interval") or 30))
         秒 = float(池子.设.get("connect_timeout") or 8)
         并发 = max(1, min(64, int(池子.设.get("check_conc") or 16)))
+        验主 = str(池子.设.get("check_host") or "www.dola.com").strip() or "www.dola.com"
+        验口 = int(池子.设.get("check_port") or 443)
         门 = asyncio.Semaphore(并发)
         拷 = [一 for 一 in list(池子.条们) if 一.启用]
 
@@ -258,7 +268,7 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
                 if 停.is_set():
                     return
                 try:
-                    await 验一条(一, 秒)
+                    await 验一条(一, 秒, 验主, 验口)
                     await 池子.报成(一)
                 except Exception as 错:
                     await 池子.报败(一, str(错))

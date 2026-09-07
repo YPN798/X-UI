@@ -111,6 +111,7 @@ function 填(d){
   挂链(d.panel_url);
   document.getElementById("概").innerHTML =
     "SOCKS <b>"+d.listen+"</b> · 管理 <b>"+d.web+"</b> · 健康 "+d.健康+"/"+d.总数+
+    " · 验活 <b>"+(d.check_host||"www.dola.com")+":"+(d.check_port||443)+"</b>"+
     " · 上行 "+(d.上行文||"0 B")+" · 下行 "+(d.下行文||"0 B")+
     (d.上次补 ? "<br><span class=次>"+d.上次补+"</span>" : "");
   const f=document.getElementById("设");
