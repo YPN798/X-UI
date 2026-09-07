@@ -28,14 +28,13 @@
 
 ## 用法
 
-仓库保持 **私有**。VPS 下载要用 GitHub 令牌（Settings → Developer settings → Personal access tokens，勾选这一个仓库的 **Contents: Read**）。令牌相当于密码，不要发到聊天或截图里。
+仓库已公开，和甬哥一样直接拉脚本，**不用令牌**。
 
-**一条命令装完。** 新机装面板+桥；已经有面板就只更新桥、打开公网管理页、写入最低消耗分流。不要再单独改配置。
+**一条命令装完。** 新机装面板+桥；已经有面板就只更新桥、打开公网管理页、写入最低消耗分流。
 
 ```bash
-GH_TOKEN=你的令牌 XUI_USER=798 XUI_PASS=798 XUI_PORT=798 XUI_PATH=798 \
-bash <(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github.raw" \
-"https://api.github.com/repos/YPN798/X-UI/contents/install.sh?ref=main") auto
+XUI_USER=798 XUI_PASS=798 XUI_PORT=798 XUI_PATH=798 \
+bash <(curl -fsSL https://raw.githubusercontent.com/YPN798/X-UI/main/install.sh) auto
 ```
 
 装完浏览器打开 `http://公网IP:41001/`，密码默认 `YPN940815...`。SOCKS 只听本机 `127.0.0.1:41000`。`XUI_PROXY` 可加在前面作为池里第一条。
