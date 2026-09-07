@@ -2757,7 +2757,7 @@ echo
 # 找到面板数据库
 xui_db(){
 local f
-for f in /etc/x-ui-yg/x-ui-yg.db /etc/x-ui/x-ui.db; do
+for f in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db /etc/x-ui-yg/x-ui-yg.db; do
 [[ -f $f ]] && echo "$f" && return 0
 done
 return 1
@@ -3068,13 +3068,13 @@ fi
 }
 mkdir -p /opt/xui-bridge /etc/xui-bridge /tmp/xui-bridge
 local f
-for f in 主程序.py 解析.py 池.py 转发.py 网页.py 配置.示例.json 最低消耗.json xui-bridge.service; do
+for f in 主程序.py 解析.py 池.py 转发.py 网页.py 配置.示例.json 最低消耗.json 写入分流.py xui-bridge.service; do
 self_get "/tmp/xui-bridge/${f}" "vps桥/${f}" || {
 red "拉桥文件失败 vps桥/${f}（私有仓库请设置 GH_TOKEN）"
 return 1
 }
 done
-cp -f /tmp/xui-bridge/主程序.py /tmp/xui-bridge/解析.py /tmp/xui-bridge/池.py /tmp/xui-bridge/转发.py /tmp/xui-bridge/网页.py /opt/xui-bridge/
+cp -f /tmp/xui-bridge/主程序.py /tmp/xui-bridge/解析.py /tmp/xui-bridge/池.py /tmp/xui-bridge/转发.py /tmp/xui-bridge/网页.py /tmp/xui-bridge/写入分流.py /opt/xui-bridge/
 if [[ ! -f /etc/xui-bridge/config.json ]]; then
 cp -f /tmp/xui-bridge/配置.示例.json /etc/xui-bridge/config.json
 fi
@@ -3143,6 +3143,11 @@ finish_bridge(){
 install_bridge || { red "桥未装上"; return 1; }
 if [[ -f /tmp/xui-bridge/最低消耗.json ]]; then
 XUI_TPL=/tmp/xui-bridge/最低消耗.json apply_tpl || true
+fi
+if [[ -f /opt/xui-bridge/写入分流.py ]]; then
+python3 /opt/xui-bridge/写入分流.py && green "已把 dola 分流写进正在跑的 Xray（走 127.0.0.1:41000）"
+sleep 2
+python3 /opt/xui-bridge/写入分流.py >/dev/null 2>&1 || true
 fi
 }
 
