@@ -1,0 +1,14 @@
+[Unit]
+Description=X-UI local proxy bridge (pool + SOCKS 41000)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/xui-bridge
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /opt/xui-bridge/主程序.py --配置 /etc/xui-bridge/config.json
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

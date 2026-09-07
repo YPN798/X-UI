@@ -28,28 +28,27 @@
 
 ## 用法
 
-### 最简：全部用随机值
+和甬哥一样：VPS 上 `curl` 本仓库的 `install.sh`。面板二进制仍从甬哥 Releases 下；桥和自动安装从 [YPN798/X-UI](https://github.com/YPN798/X-UI) 拉。
 
-```bash
-bash <(curl -Ls https://raw.githubusercontent.com/你的用户名/你的仓库/main/install.sh) auto
-```
+**先把本仓库（含 `vps桥/`）推到 GitHub**，否则网上还是旧脚本。
 
-### 指定账号密码端口路径
-
-```bash
-XUI_USER=798 XUI_PASS=798 XUI_PORT=798 XUI_PATH=798 \
-bash <(curl -Ls https://raw.githubusercontent.com/你的用户名/你的仓库/main/install.sh) auto
-```
-
-### 连出站代理和分流规则一起配好
+### 新机：面板 + 最低消耗 + 桥
 
 ```bash
 XUI_USER=798 XUI_PASS=798 XUI_PORT=798 XUI_PATH=798 \
-XUI_PROXY='socks5://用户名:密码@1.2.3.4:1080' \
-bash <(curl -Ls .../install.sh) auto
+XUI_PROXY='socks5://用户:密码@1.2.3.4:1080' \
+bash <(curl -Ls https://raw.githubusercontent.com/YPN798/X-UI/main/install.sh) auto
 ```
 
-装完直接就是「Dola 走代理、CDN 直连」的状态，不用再手动粘 JSON。
+`XUI_USER` 等可省略（会随机）。`XUI_PROXY` 可省略（桥先空着，管理页再加）。
+
+### 已有面板：只补桥和分流
+
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/YPN798/X-UI/main/install.sh) bridge
+```
+
+装完默认最低消耗：3 个主机走本机桥 `127.0.0.1:41000`。换池不用再改面板。
 
 ---
 
@@ -84,29 +83,28 @@ bash <(curl -Ls .../install.sh) auto
 | 变量 | 说明 |
 |---|---|
 | `XUI_PROXY` | 出站代理，格式 `socks5://user:pass@host:port`，也支持无账密 |
-| `XUI_PROXY_DOMAIN` | 走代理的域名，逗号分隔，默认 `domain:dola.com` |
+| `XUI_PROXY_DOMAIN` | 走代理的域名，逗号分隔。默认 `full:www.dola.com,full:dola.com,full:wss-normal-i18n.dola.com`（生成接口所在主机；HTTPS 不能按 `/chat/completion` 路径再拆） |
 | `XUI_DIRECT_DOMAIN` | 强制直连的域名，逗号分隔，默认是图床/CDN/打点那几个 |
 | `XUI_TPL` | 直接给一份完整 Xray 配置，本地路径或 URL。给了就忽略上面三个 |
 
 两个都不给就不动默认配置。
 
-**视频 CDN 已内置排除**：`v16-dola.dola.com`、`v19-dola.dola.com` 这类子域用正则强制直连。不加这条的话，`domain:dola.com` 会把几十 MB 的视频下载也塞进代理。
+若改回 `XUI_PROXY_DOMAIN=domain:dola.com`（整棵 `*.dola.com`），脚本会自动把 `v16-dola.dola.com` 这类视频 CDN 排除直连，避免把几十 MB 视频塞进代理。
 
 ### 仓库地址
 
-fork 之后改脚本开头这两行就行：
+脚本开头三行：
 
 ```bash
-RAW_BASE=${RAW_BASE:-https://raw.githubusercontent.com/你的用户名/你的仓库/main}
-REL_BASE=${REL_BASE:-https://github.com/你的用户名/你的仓库/releases/download/xui_yg}
+RAW_BASE=.../yonggekkk/x-ui-yg/main          # 面板 version / xuiwpph
+REL_BASE=.../yonggekkk/x-ui-yg/releases/...  # 面板 tar.gz
+SELF_RAW=.../YPN798/X-UI/main                # 本仓库 install.sh + vps桥
 ```
 
-`RAW_BASE` 放 `install.sh`、`version`、`xuiwpph_*`；`REL_BASE` 放面板 tar.gz。
-
-也可以临时用环境变量覆盖，不用改文件：
+换自己的 fork 只改 `SELF_RAW`。也可以临时覆盖：
 
 ```bash
-RAW_BASE=https://raw.githubusercontent.com/xxx/yyy/main bash install.sh auto
+SELF_RAW=https://raw.githubusercontent.com/xxx/yyy/main bash install.sh auto
 ```
 
 ---

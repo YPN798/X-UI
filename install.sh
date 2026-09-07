@@ -28,17 +28,20 @@ readp(){ read -p "$(yellow "$1")" $2;}
 #   XUI_TPL       自定义 Xray 配置模板文件路径或 URL，留空则不改默认模板
 #   XUI_PROXY     出站代理 socks5://user:pass@host:port，配合内置模板使用
 XUI_AUTO=0
+XUI_BRIDGE_ONLY=0
 for __arg in "$@"; do
 case "$__arg" in
 auto|--auto|-a) XUI_AUTO=1 ;;
+bridge|--bridge) XUI_BRIDGE_ONLY=1 ;;
 esac
 done
 
-# 仓库地址：改成自己的 fork 后，只需要改这三行
-# RAW_BASE   放 install.sh / version / xuiwpph_* 的 raw 地址
-# REL_BASE   放面板 tar.gz 的 Releases 地址（面板二进制不开源，可沿用上游或自己镜像一份）
+# 仓库地址
+# RAW_BASE / REL_BASE：面板二进制、version、xuiwpph 仍走甬哥（未开源）
+# SELF_RAW：本仓库（自动安装脚本 + vps桥）
 RAW_BASE=${RAW_BASE:-https://raw.githubusercontent.com/yonggekkk/x-ui-yg/main}
 REL_BASE=${REL_BASE:-https://github.com/yonggekkk/x-ui-yg/releases/download/xui_yg}
+SELF_RAW=${SELF_RAW:-https://raw.githubusercontent.com/YPN798/X-UI/main}
 #================================================
 
 [[ $EUID -ne 0 ]] && yellow "请以root模式运行脚本" && exit
@@ -2795,25 +2798,27 @@ if ! [[ $pport =~ ^[0-9]+$ ]] || [[ $pport -lt 1 || $pport -gt 65535 ]]; then
 red "XUI_PROXY 端口不合法：$pport"
 return 1
 fi
-if [[ -n $puser ]]; then
-srv="{ \"address\": \"$phost\", \"port\": $pport, \"users\": [ { \"user\": \"$puser\", \"pass\": \"$ppass\" } ] }"
-else
-srv="{ \"address\": \"$phost\", \"port\": $pport }"
-fi
+# Xray 永远指本机桥，真正上游写进 /etc/xui-bridge，改池不重载面板
+srv='{ "address": "127.0.0.1", "port": 41000 }'
 
-# 走代理的域名
-local def_proxy='domain:dola.com'
+# 走代理的域名。默认最低消耗：生成接口 /chat/completion 和 launch/setting
+# 都在 www.dola.com，HTTPS 只能按主机分流，不能按路径只代理这一条。
+# WS 同属生成链路。其余域名走 VPS 本机 IP。
+local def_proxy='full:www.dola.com,full:dola.com,full:wss-normal-i18n.dola.com'
+local 用域=${XUI_PROXY_DOMAIN:-$def_proxy}
 local pd
-pd=$(d2j "${XUI_PROXY_DOMAIN:-$def_proxy}")
+pd=$(d2j "$用域")
 
 # 强制直连的域名（CDN、图床、打点）
 local def_direct='domain:ibyteimg.com,domain:ciciai.com,domain:byteintlapi.com,domain:bytevcloudapi.com,domain:ibytedtos.com,domain:zijieapi.com'
 local dd
 dd=$(d2j "${XUI_DIRECT_DOMAIN:-$def_direct}")
 
-# 视频 CDN 子域（v16-dola.dola.com 这类）单独用正则排除，避免被 domain:dola.com 吃掉
+# 只有用 domain:dola.com 吃掉整棵子域时，才排除视频 CDN
+if [[ "$用域" == *domain:dola.com* ]]; then
 local vcdn='"regexp:^v[0-9]+-dola\\.dola\\.com$"'
 dd="$vcdn,$dd"
+fi
 
 cat > "$out" <<EOF
 {
@@ -2903,9 +2908,39 @@ sleep 2
 rm -f "$tpl"
 
 if [[ $rc -eq 0 ]]; then
-green "已写入自定义 Xray 配置（出站代理 + 分流规则）"
+green "已写入自定义 Xray 配置（最低消耗 → 127.0.0.1:41000 桥）"
+seed_bridge
 else
 red "写入数据库失败，请装完后手动在面板里粘贴 Xray 配置"
+fi
+}
+
+# 首次写入桥配置，已有文件不覆盖
+seed_bridge(){
+mkdir -p /etc/xui-bridge
+local cfg=/etc/xui-bridge/config.json
+if [[ -f $cfg ]]; then
+yellow "已有 $cfg，不覆盖代理池"
+return 0
+fi
+if command -v python3 >/dev/null 2>&1; then
+XUI_PROXY="$XUI_PROXY" python3 - <<'PY'
+import json, os
+p = "/etc/xui-bridge/config.json"
+px = (os.environ.get("XUI_PROXY") or "").strip()
+open(p, "w", encoding="utf-8").write(json.dumps({
+    "listen": "127.0.0.1", "port": 41000,
+    "web": "127.0.0.1", "web_port": 41001,
+    "pool_size": 8, "mode": "round_robin", "sticky": "",
+    "fail_n": 3, "check_interval": 30, "connect_timeout": 8,
+    "fetch_url": "", "fetch_cmd": "",
+    "web_pass": "YPN940815...",
+    "proxies": [px] if px else [],
+}, ensure_ascii=False, indent=2) + "\n")
+print("已写", p)
+PY
+else
+yellow "没有 python3，跳过写入桥配置，请稍后运行 vps桥/安装.sh"
 fi
 }
 
@@ -2995,6 +3030,50 @@ return 1
 fi
 }
 
+# 从本仓库拉取桥并启动。curl 一键时旁边没有本地文件，所以按 URL 下。
+install_bridge(){
+command -v python3 >/dev/null 2>&1 || {
+if command -v apt-get >/dev/null 2>&1; then apt-get install -y python3 >/dev/null 2>&1
+elif command -v yum >/dev/null 2>&1; then yum install -y python3 >/dev/null 2>&1
+elif command -v apk >/dev/null 2>&1; then apk add python3 >/dev/null 2>&1
+fi
+}
+mkdir -p /opt/xui-bridge /etc/xui-bridge /tmp/xui-bridge
+local f
+for f in 主程序.py 解析.py 池.py 转发.py 网页.py 配置.示例.json 最低消耗.json xui-bridge.service; do
+curl -fsSL --retry 2 -o "/tmp/xui-bridge/${f}" "${SELF_RAW}/vps桥/${f}" || {
+red "拉桥文件失败 ${SELF_RAW}/vps桥/${f}"
+return 1
+}
+done
+cp -f /tmp/xui-bridge/主程序.py /tmp/xui-bridge/解析.py /tmp/xui-bridge/池.py /tmp/xui-bridge/转发.py /tmp/xui-bridge/网页.py /opt/xui-bridge/
+if [[ ! -f /etc/xui-bridge/config.json ]]; then
+cp -f /tmp/xui-bridge/配置.示例.json /etc/xui-bridge/config.json
+fi
+if [[ -n ${XUI_PROXY:-} ]]; then
+XUI_PROXY="$XUI_PROXY" python3 - <<'PY'
+import json, os
+p = "/etc/xui-bridge/config.json"
+try:
+    d = json.load(open(p, encoding="utf-8"))
+except Exception:
+    d = {}
+px = (os.environ.get("XUI_PROXY") or "").strip()
+lst = list(d.get("proxies") or [])
+if px and px not in lst:
+    lst.append(px)
+d["proxies"] = lst
+d.setdefault("web_pass", "YPN940815...")
+open(p, "w", encoding="utf-8").write(json.dumps(d, ensure_ascii=False, indent=2) + "\n")
+PY
+fi
+cp -f /tmp/xui-bridge/xui-bridge.service /etc/systemd/system/xui-bridge.service
+systemctl daemon-reload
+systemctl enable xui-bridge >/dev/null 2>&1
+systemctl restart xui-bridge
+green "本机桥已启动 127.0.0.1:41000 ，管理页 :41001 密码见 web_pass"
+}
+
 # 全自动安装：不问任何问题
 auto_install(){
 if [[ -f /usr/local/x-ui/x-ui ]]; then
@@ -3035,8 +3114,9 @@ command -v openssl >/dev/null 2>&1 && openssl ecparam -genkey -name prime256v1 -
 command -v openssl >/dev/null 2>&1 && openssl req -new -x509 -days 36500 -key /root/ygkkkcaz/private.key -out /root/ygkkkcaz/cert.crt -subj "/CN=www.bing.com" >/dev/null 2>&1
 openssl x509 -in /root/ygkkkcaz/cert.crt -outform DER 2>/dev/null | sha256sum | awk '{print $1}' > /root/ygkkkcaz/SHA256.txt
 
-# 8. 写入自定义 Xray 配置
+# 8. 写入自定义 Xray 配置（指向本机桥）
 apply_tpl
+install_bridge || yellow "桥未装上，可稍后：bash <(curl -Ls ${SELF_RAW}/install.sh) bridge"
 
 # 9. 收尾：守护、版本号、IP
 restart
@@ -3322,6 +3402,12 @@ esac
 #=========== 入口分发（本分支新增） ===========
 if [[ $XUI_AUTO == 1 ]]; then
 auto_install
+elif [[ $XUI_BRIDGE_ONLY == 1 ]]; then
+install_bridge
+# 已有面板时把最低消耗写进库（install_bridge 已把 json 下到 /tmp）
+if [[ -f /tmp/xui-bridge/最低消耗.json ]]; then
+XUI_TPL=/tmp/xui-bridge/最低消耗.json apply_tpl || true
+fi
 else
 show_menu
 fi
