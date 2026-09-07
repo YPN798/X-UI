@@ -1,0 +1,23 @@
+{
+  "listen": "127.0.0.1",
+  "port": 41000,
+  "web": "0.0.0.0",
+  "web_port": 41001,
+  "pool_size": 8,
+  "mode": "round_robin",
+  "sticky": "",
+  "fail_n": 3,
+  "check_interval": 30,
+  "check_conc": 16,
+  "check_host": "www.dola.com",
+  "check_port": 443,
+  "connect_timeout": 8,
+  "fetch_url": "",
+  "fetch_cmd": "",
+  "web_pass": "YPN940815...",
+  "node_port": 14564,
+  "node_uuid": "",
+  "node_listen": "0.0.0.0",
+  "public_host": "",
+  "proxies": []
+}

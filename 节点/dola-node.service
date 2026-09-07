@@ -1,0 +1,14 @@
+[Unit]
+Description=Dola node (VMess + local proxy pool)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/dola-node
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /opt/dola-node/主程序.py --配置 /etc/dola-node/config.json
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
