@@ -36,6 +36,10 @@ auto|--auto|-a) XUI_AUTO=1 ;;
 bridge|--bridge) XUI_BRIDGE_ONLY=1 ;;
 esac
 done
+if [[ $XUI_AUTO == 1 || $XUI_BRIDGE_ONLY == 1 ]]; then
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+fi
 
 # 仓库地址
 # RAW_BASE / REL_BASE：面板二进制、version、xuiwpph 仍走甬哥（未开源）
@@ -3419,6 +3423,8 @@ esac
 
 #=========== 入口分发（本分支新增） ===========
 if [[ $XUI_AUTO == 1 ]]; then
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
 auto_install
 elif [[ $XUI_BRIDGE_ONLY == 1 ]]; then
 install_bridge
