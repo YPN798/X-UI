@@ -51,7 +51,7 @@ bash <(curl -Ls -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/v
 "https://api.github.com/repos/YPN798/X-UI/contents/install.sh?ref=main") bridge
 ```
 
-装完默认最低消耗：3 个主机走本机桥 `127.0.0.1:41000`。换池不用再改面板。
+装完默认最低消耗：3 个主机走本机桥 `127.0.0.1:41000`。管理页 `http://公网IP:41001/`（密码 `web_pass`）。换池不用再改面板。
 
 ---
 

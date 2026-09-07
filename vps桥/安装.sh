@@ -35,7 +35,7 @@ except Exception:
     d = {}
 d.setdefault("listen", "127.0.0.1")
 d.setdefault("port", 41000)
-d.setdefault("web", "127.0.0.1")
+d.setdefault("web", "0.0.0.0")
 d.setdefault("web_port", 41001)
 d.setdefault("web_pass", "YPN940815...")
 lst = list(d.get("proxies") or [])
@@ -115,7 +115,5 @@ echo
 echo "=============== 部署完成 ==============="
 echo "只在业务机跑。出口机不要跑这个脚本。"
 echo "SOCKS  127.0.0.1:41000"
-echo "管理页 http://127.0.0.1:41001/"
-echo "密码   /etc/xui-bridge/config.json 的 web_pass（默认 YPN940815...）"
-echo "本机看页：ssh -L 41001:127.0.0.1:41001 root@这台IP"
+echo "管理页 http://公网IP:41001/  密码见 web_pass（默认 YPN940815...）"
 echo "========================================"

@@ -2952,7 +2952,7 @@ p = "/etc/xui-bridge/config.json"
 px = (os.environ.get("XUI_PROXY") or "").strip()
 open(p, "w", encoding="utf-8").write(json.dumps({
     "listen": "127.0.0.1", "port": 41000,
-    "web": "127.0.0.1", "web_port": 41001,
+    "web": "0.0.0.0", "web_port": 41001,
     "pool_size": 8, "mode": "round_robin", "sticky": "",
     "fail_n": 3, "check_interval": 30, "connect_timeout": 8,
     "fetch_url": "", "fetch_cmd": "",
@@ -3072,8 +3072,7 @@ cp -f /tmp/xui-bridge/主程序.py /tmp/xui-bridge/解析.py /tmp/xui-bridge/池
 if [[ ! -f /etc/xui-bridge/config.json ]]; then
 cp -f /tmp/xui-bridge/配置.示例.json /etc/xui-bridge/config.json
 fi
-if [[ -n ${XUI_PROXY:-} ]]; then
-XUI_PROXY="$XUI_PROXY" python3 - <<'PY'
+XUI_PROXY="${XUI_PROXY:-}" python3 - <<'PY'
 import json, os
 p = "/etc/xui-bridge/config.json"
 try:
@@ -3085,15 +3084,19 @@ lst = list(d.get("proxies") or [])
 if px and px not in lst:
     lst.append(px)
 d["proxies"] = lst
+d["web"] = "0.0.0.0"
+d["web_port"] = int(d.get("web_port") or 41001)
 d.setdefault("web_pass", "YPN940815...")
 open(p, "w", encoding="utf-8").write(json.dumps(d, ensure_ascii=False, indent=2) + "\n")
 PY
-fi
 cp -f /tmp/xui-bridge/xui-bridge.service /etc/systemd/system/xui-bridge.service
 systemctl daemon-reload
 systemctl enable xui-bridge >/dev/null 2>&1
 systemctl restart xui-bridge
-green "本机桥已启动 127.0.0.1:41000 ，管理页 :41001 密码见 web_pass"
+local 公网
+公网=$(curl -s4 --max-time 4 ifconfig.me 2>/dev/null || cat /usr/local/x-ui/xip 2>/dev/null | sed -n 1p)
+green "本机桥 SOCKS 127.0.0.1:41000"
+green "管理页 http://${公网:-公网IP}:41001/  密码见 /etc/xui-bridge/config.json 的 web_pass"
 }
 
 # 全自动安装：不问任何问题

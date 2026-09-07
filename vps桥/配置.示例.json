@@ -1,7 +1,7 @@
 {
   "listen": "127.0.0.1",
   "port": 41000,
-  "web": "127.0.0.1",
+  "web": "0.0.0.0",
   "web_port": 41001,
   "pool_size": 8,
   "mode": "round_robin",

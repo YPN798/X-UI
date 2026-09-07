@@ -4,7 +4,7 @@
   python3 主程序.py
   python3 主程序.py --配置 /etc/xui-bridge/config.json
 
-管理页默认 http://127.0.0.1:41001/ （SSH 打隧道再开浏览器）。
+管理页默认 http://公网IP:41001/ （听 0.0.0.0）。
 密码默认 YPN940815...，页面登录或 API 头 X-Pass / Authorization: Bearer。
 """
 
