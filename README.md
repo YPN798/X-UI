@@ -28,24 +28,27 @@
 
 ## 用法
 
-和甬哥一样：VPS 上 `curl` 本仓库的 `install.sh`。面板二进制仍从甬哥 Releases 下；桥和自动安装从 [YPN798/X-UI](https://github.com/YPN798/X-UI) 拉。
+仓库保持 **私有**。VPS 下载要用 GitHub 令牌（Settings → Developer settings → Personal access tokens，勾选这一个仓库的 **Contents: Read**）。
 
-**先把本仓库（含 `vps桥/`）推到 GitHub**，否则网上还是旧脚本。
+先 `export GH_TOKEN=你的令牌`，再装。令牌相当于密码，不要发到聊天或截图里。
 
 ### 新机：面板 + 最低消耗 + 桥
 
 ```bash
+export GH_TOKEN=ghp_你的令牌
 XUI_USER=798 XUI_PASS=798 XUI_PORT=798 XUI_PATH=798 \
-XUI_PROXY='socks5://用户:密码@1.2.3.4:1080' \
-bash <(curl -Ls https://raw.githubusercontent.com/YPN798/X-UI/main/install.sh) auto
+bash <(curl -Ls -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github.raw" \
+"https://api.github.com/repos/YPN798/X-UI/contents/install.sh?ref=main") auto
 ```
 
-`XUI_USER` 等可省略（会随机）。`XUI_PROXY` 可省略（桥先空着，管理页再加）。
+`XUI_PROXY` 可加在前面，作为池里第一条。
 
 ### 已有面板：只补桥和分流
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/YPN798/X-UI/main/install.sh) bridge
+export GH_TOKEN=ghp_你的令牌
+bash <(curl -Ls -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github.raw" \
+"https://api.github.com/repos/YPN798/X-UI/contents/install.sh?ref=main") bridge
 ```
 
 装完默认最低消耗：3 个主机走本机桥 `127.0.0.1:41000`。换池不用再改面板。

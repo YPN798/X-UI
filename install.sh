@@ -27,6 +27,7 @@ readp(){ read -p "$(yellow "$1")" $2;}
 #   XUI_FIREWALL  1=关防火墙(默认) 0=不动防火墙
 #   XUI_TPL       自定义 Xray 配置模板文件路径或 URL，留空则不改默认模板
 #   XUI_PROXY     出站代理 socks5://user:pass@host:port，配合内置模板使用
+#   GH_TOKEN      私有仓库拉取本仓库脚本/桥文件用的 GitHub 令牌（Contents 只读）
 XUI_AUTO=0
 XUI_BRIDGE_ONLY=0
 for __arg in "$@"; do
@@ -42,7 +43,24 @@ done
 RAW_BASE=${RAW_BASE:-https://raw.githubusercontent.com/yonggekkk/x-ui-yg/main}
 REL_BASE=${REL_BASE:-https://github.com/yonggekkk/x-ui-yg/releases/download/xui_yg}
 SELF_RAW=${SELF_RAW:-https://raw.githubusercontent.com/YPN798/X-UI/main}
+SELF_REPO=${SELF_REPO:-YPN798/X-UI}
+SELF_REF=${SELF_REF:-main}
 #================================================
+
+# 私有仓库用 GH_TOKEN + GitHub API；公开仓库仍走 raw
+self_get(){
+local dest=$1 rel=$2
+local enc
+enc=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe='/'))" "$rel" 2>/dev/null || echo "$rel")
+if [[ -n ${GH_TOKEN:-} ]]; then
+curl -fsSL --retry 2 \
+  -H "Authorization: Bearer ${GH_TOKEN}" \
+  -H "Accept: application/vnd.github.raw" \
+  -o "$dest" "https://api.github.com/repos/${SELF_REPO}/contents/${enc}?ref=${SELF_REF}"
+else
+curl -fsSL --retry 2 -o "$dest" "${SELF_RAW}/${rel}"
+fi
+}
 
 [[ $EUID -ne 0 ]] && yellow "请以root模式运行脚本" && exit
 stty erase $'\b' 2>/dev/null || stty erase '^H' 2>/dev/null
@@ -3041,8 +3059,8 @@ fi
 mkdir -p /opt/xui-bridge /etc/xui-bridge /tmp/xui-bridge
 local f
 for f in 主程序.py 解析.py 池.py 转发.py 网页.py 配置.示例.json 最低消耗.json xui-bridge.service; do
-curl -fsSL --retry 2 -o "/tmp/xui-bridge/${f}" "${SELF_RAW}/vps桥/${f}" || {
-red "拉桥文件失败 ${SELF_RAW}/vps桥/${f}"
+self_get "/tmp/xui-bridge/${f}" "vps桥/${f}" || {
+red "拉桥文件失败 vps桥/${f}（私有仓库请设置 GH_TOKEN）"
 return 1
 }
 done
