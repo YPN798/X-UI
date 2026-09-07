@@ -37,6 +37,7 @@ def 人读(n: int) -> str:
     "sticky": "",
     "fail_n": 3,
     "check_interval": 30,
+    "check_conc": 16,
     "connect_timeout": 8,
     "fetch_url": "",
     "fetch_cmd": "",
@@ -135,6 +136,7 @@ class 池:
             "sticky": self.设["sticky"],
             "fail_n": int(self.设["fail_n"]),
             "check_interval": int(self.设["check_interval"]),
+            "check_conc": int(self.设.get("check_conc") or 16),
             "connect_timeout": int(self.设["connect_timeout"]),
             "fetch_url": self.设["fetch_url"],
             "fetch_cmd": self.设["fetch_cmd"],
@@ -232,7 +234,7 @@ class 池:
             for k in ("mode", "sticky", "fetch_url", "fetch_cmd"):
                 if k in 补 and 补[k] is not None:
                     self.设[k] = 补[k]
-            for k in ("pool_size", "fail_n", "check_interval", "connect_timeout"):
+            for k in ("pool_size", "fail_n", "check_interval", "check_conc", "connect_timeout"):
                 if k in 补 and 补[k] not in (None, ""):
                     self.设[k] = int(补[k])
             self.落盘()
@@ -367,6 +369,7 @@ class 池:
             "pool_size": int(self.设["pool_size"]),
             "fail_n": int(self.设["fail_n"]),
             "check_interval": int(self.设["check_interval"]),
+            "check_conc": int(self.设.get("check_conc") or 16),
             "connect_timeout": int(self.设["connect_timeout"]),
             "fetch_url": self.设["fetch_url"],
             "fetch_cmd": self.设["fetch_cmd"],

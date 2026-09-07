@@ -249,17 +249,22 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
     while not 停.is_set():
         间隔 = max(8, int(池子.设.get("check_interval") or 30))
         秒 = float(池子.设.get("connect_timeout") or 8)
-        拷 = list(池子.条们)
-        for 一 in 拷:
-            if 停.is_set():
-                break
-            if not 一.启用:
-                continue
-            try:
-                await 验一条(一, 秒)
-                await 池子.报成(一)
-            except Exception as 错:
-                await 池子.报败(一, str(错))
+        并发 = max(1, min(64, int(池子.设.get("check_conc") or 16)))
+        门 = asyncio.Semaphore(并发)
+        拷 = [一 for 一 in list(池子.条们) if 一.启用]
+
+        async def 验(一: 条) -> None:
+            async with 门:
+                if 停.is_set():
+                    return
+                try:
+                    await 验一条(一, 秒)
+                    await 池子.报成(一)
+                except Exception as 错:
+                    await 池子.报败(一, str(错))
+
+        if 拷:
+            await asyncio.gather(*(验(一) for 一 in 拷))
         try:
             await 池子.补齐()
         except Exception as 错:

@@ -69,6 +69,7 @@ th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--线);font-si
     <label>池目标条数 <input name="pool_size" type="number" min="0" max="64"></label>
     <label>失败几次摘除 <input name="fail_n" type="number" min="1" max="20"></label>
     <label>验活间隔秒 <input name="check_interval" type="number" min="8" max="600"></label>
+    <label>同时验活条数 <input name="check_conc" type="number" min="1" max="64"></label>
     <label>fetch_url <input name="fetch_url" placeholder="GET 返回一行代理串" style="min-width:260px"></label>
     <label>fetch_cmd <input name="fetch_cmd" placeholder="命令 stdout 一行" style="min-width:200px"></label>
     <button type="submit">保存设置</button>
@@ -115,7 +116,7 @@ function 填(d){
   const f=document.getElementById("设");
   f.mode.value=d.mode; f.sticky.value=d.sticky==="关"?"":d.sticky;
   f.pool_size.value=d.pool_size; f.fail_n.value=d.fail_n;
-  f.check_interval.value=d.check_interval;
+  f.check_interval.value=d.check_interval; f.check_conc.value=d.check_conc||16;
   f.fetch_url.value=d.fetch_url||""; f.fetch_cmd.value=d.fetch_cmd||"";
   const tb=document.getElementById("表");
   tb.innerHTML="";
@@ -139,7 +140,7 @@ document.getElementById("设").onsubmit=async e=>{
   await api("/api/set",{
     mode:f.mode.value, sticky:f.sticky.value,
     pool_size:+f.pool_size.value, fail_n:+f.fail_n.value,
-    check_interval:+f.check_interval.value,
+    check_interval:+f.check_interval.value, check_conc:+f.check_conc.value,
     fetch_url:f.fetch_url.value, fetch_cmd:f.fetch_cmd.value
   });
   刷();
