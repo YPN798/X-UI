@@ -15,9 +15,9 @@ white(){ echo -e "\033[37m\033[01m$1\033[0m";}
 readp(){ read -p "$(yellow "$1")" $2;}
 
 #=========== 自动安装模式（本分支新增） ===========
-# 用法：
-#   bash install.sh auto                     全部用默认值/随机值
-#   XUI_USER=abc XUI_PASS=abc123 XUI_PORT=54321 XUI_PATH=xyz bash install.sh auto
+# 用法：一条 auto 即可。新机装面板+桥，已有面板只补桥和公网管理页。
+#   bash install.sh auto
+#   XUI_USER=798 XUI_PASS=798 XUI_PORT=798 XUI_PATH=798 bash install.sh auto
 #
 # 可用环境变量：
 #   XUI_USER      面板用户名        默认随机 6 位
@@ -63,6 +63,12 @@ curl -fsSL --retry 2 \
   -o "$dest" "https://api.github.com/repos/${SELF_REPO}/contents/${enc}?ref=${SELF_REF}"
 else
 curl -fsSL --retry 2 -o "$dest" "${SELF_RAW}/${rel}"
+fi
+[[ -s "$dest" ]] || return 1
+if grep -q '"documentation_url"' "$dest" && grep -q '"message"' "$dest"; then
+red "拉 ${rel} 失败（私有仓库请设置有效 GH_TOKEN）：$(head -c 160 "$dest")"
+rm -f "$dest"
+return 1
 fi
 }
 
@@ -3099,11 +3105,29 @@ green "本机桥 SOCKS 127.0.0.1:41000"
 green "管理页 http://${公网:-公网IP}:41001/  密码见 /etc/xui-bridge/config.json 的 web_pass"
 }
 
-# 全自动安装：不问任何问题
+# 装/更新桥，写入最低消耗，打印公网管理页
+finish_bridge(){
+install_bridge || { red "桥未装上"; return 1; }
+if [[ -f /tmp/xui-bridge/最低消耗.json ]]; then
+XUI_TPL=/tmp/xui-bridge/最低消耗.json apply_tpl || true
+fi
+local 公网 密
+公网=$(curl -s4 --max-time 4 ifconfig.me 2>/dev/null || cat /usr/local/x-ui/xip 2>/dev/null | sed -n 1p)
+密=$(python3 -c "import json; print(json.load(open('/etc/xui-bridge/config.json',encoding='utf-8')).get('web_pass',''))" 2>/dev/null)
+echo
+green "=============== 桥已就绪 ==============="
+echo -e "桥管理页：${blue}http://${公网:-公网IP}:41001/${plain}"
+echo -e "管理密码：${blue}${密:-见 /etc/xui-bridge/config.json}${plain}"
+echo -e "SOCKS 仅本机：${blue}127.0.0.1:41000${plain}"
+green "========================================"
+}
+
+# 全自动安装：不问任何问题。已有面板则只补桥和分流。
 auto_install(){
 if [[ -f /usr/local/x-ui/x-ui ]]; then
-red "检测到已安装 x-ui，自动安装已跳过。要重装请先执行：x-ui 然后选 2 卸载"
-exit 1
+yellow "检测到已安装 x-ui，跳过面板，只更新桥和最低消耗分流"
+finish_bridge
+return 0
 fi
 
 green "=============== x-ui 自动安装开始 ==============="
@@ -3139,9 +3163,8 @@ command -v openssl >/dev/null 2>&1 && openssl ecparam -genkey -name prime256v1 -
 command -v openssl >/dev/null 2>&1 && openssl req -new -x509 -days 36500 -key /root/ygkkkcaz/private.key -out /root/ygkkkcaz/cert.crt -subj "/CN=www.bing.com" >/dev/null 2>&1
 openssl x509 -in /root/ygkkkcaz/cert.crt -outform DER 2>/dev/null | sha256sum | awk '{print $1}' > /root/ygkkkcaz/SHA256.txt
 
-# 8. 写入自定义 Xray 配置（指向本机桥）
-apply_tpl
-install_bridge || yellow "桥未装上，可稍后：bash <(curl -Ls ${SELF_RAW}/install.sh) bridge"
+# 8. 本机桥 + 最低消耗分流
+finish_bridge || yellow "桥未装上，可稍后同一条 auto 命令再跑一次"
 
 # 9. 收尾：守护、版本号、IP
 restart
@@ -3164,7 +3187,8 @@ echo -e "用户名  ：${blue}${username}${plain}"
 echo -e "密码    ：${blue}${password}${plain}"
 echo -e "管理命令：${blue}x-ui${plain}"
 echo -e "x-ui状态: 已运行"
-echo -e "桥管理页：${blue}http://${xip1}:41001/${plain}  密码见 /etc/xui-bridge/config.json 的 web_pass"
+echo -e "桥管理页：${blue}http://${xip1}:41001/${plain}"
+echo -e "桥密码  ：${blue}$(python3 -c "import json; print(json.load(open('/etc/xui-bridge/config.json',encoding='utf-8')).get('web_pass',''))" 2>/dev/null)${plain}"
 green "========================================"
 echo
 yellow "请立刻保存以上信息。面板端口已在防火墙放行。"
@@ -3426,16 +3450,15 @@ esac
 }
 
 #=========== 入口分发（本分支新增） ===========
+if [[ $XUI_AUTO == 0 && $XUI_BRIDGE_ONLY == 0 && -n ${XUI_USER:-} ]]; then
+XUI_AUTO=1
+fi
 if [[ $XUI_AUTO == 1 ]]; then
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 auto_install
 elif [[ $XUI_BRIDGE_ONLY == 1 ]]; then
-install_bridge
-# 已有面板时把最低消耗写进库（install_bridge 已把 json 下到 /tmp）
-if [[ -f /tmp/xui-bridge/最低消耗.json ]]; then
-XUI_TPL=/tmp/xui-bridge/最低消耗.json apply_tpl || true
-fi
+finish_bridge
 else
 show_menu
 fi
