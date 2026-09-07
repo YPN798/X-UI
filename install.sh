@@ -3164,6 +3164,7 @@ echo -e "用户名  ：${blue}${username}${plain}"
 echo -e "密码    ：${blue}${password}${plain}"
 echo -e "管理命令：${blue}x-ui${plain}"
 echo -e "x-ui状态: 已运行"
+echo -e "桥管理页：${blue}http://${xip1}:41001/${plain}  密码见 /etc/xui-bridge/config.json 的 web_pass"
 green "========================================"
 echo
 yellow "请立刻保存以上信息。面板端口已在防火墙放行。"
