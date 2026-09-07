@@ -50,12 +50,30 @@ def 写入(p: Path | None = None) -> str:
     rt["domainStrategy"] = "IPIfNonMatch"
     rules = [r for r in (rt.get("rules") or []) if isinstance(r, dict)]
     rules = [r for r in rules if r.get("outboundTag") != "socks-proxy"]
-    插 = {"type": "field", "domain": 域, "outboundTag": "socks-proxy"}
+    入站标 = []
+    for ib in d.get("inbounds") or []:
+        if not isinstance(ib, dict):
+            continue
+        if ib.get("tag") == "api" or ib.get("protocol") == "dokodemo-door":
+            continue
+        t = str(ib.get("tag") or "").strip()
+        if t:
+            入站标.append(t)
+    插们 = [{"type": "field", "domain": 域, "outboundTag": "socks-proxy"}]
+    if 入站标:
+        插们.insert(0, {
+            "type": "field",
+            "inboundTag": 入站标,
+            "port": "443",
+            "network": "tcp",
+            "outboundTag": "socks-proxy",
+        })
     位 = 0
     for i, r in enumerate(rules):
         if r.get("inboundTag") == ["api"] or r.get("outboundTag") == "api":
             位 = i + 1
-    rules.insert(位, 插)
+    for 插 in reversed(插们):
+        rules.insert(位, 插)
     rt["rules"] = rules
 
     for ib in d.get("inbounds") or []:
