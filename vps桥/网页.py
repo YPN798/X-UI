@@ -8,6 +8,11 @@ import hashlib
 import hmac
 import json
 import logging
+import os
+import sqlite3
+import subprocess
+import time
+from pathlib import Path
 from urllib.parse import parse_qs
 
 from 池 import 池
@@ -35,6 +40,7 @@ textarea{width:100%;min-height:72px}
 button{border:0;border-radius:6px;padding:8px 12px;background:var(--蓝);color:#fff;cursor:pointer}
 button.灰{background:#57606a}
 button.红{background:var(--红)}
+a.跳{display:none;float:right;margin-right:8px;text-decoration:none;border-radius:6px;padding:8px 12px;background:#1a7f37;color:#fff}
 table{width:100%;border-collapse:collapse}
 th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--线);font-size:13px}
 .好{color:var(--绿)} .坏{color:var(--红)}
@@ -43,8 +49,8 @@ th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--线);font-si
 </head>
 <body>
 <main>
-<h1>代理池 <button class="灰" id="退" style="float:right">退出</button></h1>
-<p class="次">Xray 只连本机 41000。这里改池、换负载，不用重载面板。页面和 API 都要密码。</p>
+<h1>代理池 <button class="灰" id="退" style="float:right">退出</button><a class="跳" id="去面板" target="_blank" rel="noopener">打开 X-UI 面板</a></h1>
+<p class="次">Xray 只连本机 41000。这里改池、换负载，不用重载面板。点绿色按钮进 X-UI。</p>
 <div class="卡" id="概"></div>
 <div class="卡">
   <form id="设" class="行">
@@ -95,7 +101,13 @@ async function api(path, body){
   if(!r.ok || j.ok===false) throw new Error(j.err||t);
   return j;
 }
+function 挂链(u){
+  const a=document.getElementById("去面板");
+  if(!a||!u) return;
+  a.href=u; a.style.display="inline-block";
+}
 function 填(d){
+  挂链(d.panel_url);
   document.getElementById("概").innerHTML =
     "SOCKS <b>"+d.listen+"</b> · 管理 <b>"+d.web+"</b> · 健康 "+d.健康+"/"+d.总数+
     " · 上行 "+(d.上行文||"0 B")+" · 下行 "+(d.下行文||"0 B")+
@@ -162,6 +174,7 @@ h1{font-size:18px;margin:0 0 8px}
 p{color:#6b727c;margin:0 0 14px}
 input{width:100%;padding:8px 10px;border:1px solid #d0d7de;border-radius:6px;font:14px inherit}
 button{margin-top:12px;width:100%;border:0;border-radius:6px;padding:9px;background:#0969da;color:#fff;cursor:pointer}
+a.跳{display:none;margin-top:10px;text-align:center;text-decoration:none;border-radius:6px;padding:9px;background:#1a7f37;color:#fff}
 .错{color:#cf222e;margin-top:8px;min-height:1.2em}
 </style>
 </head>
@@ -172,10 +185,14 @@ button{margin-top:12px;width:100%;border:0;border-radius:6px;padding:9px;backgro
 <form id="登">
 <input name="pass" type="password" autocomplete="current-password" autofocus>
 <button type="submit">进入</button>
+<a class="跳" id="去面板" target="_blank" rel="noopener">打开 X-UI 面板</a>
 <div class="错" id="错"></div>
 </form>
 </div>
 <script>
+fetch("/api/panel").then(r=>r.json()).then(j=>{
+  if(j&&j.url){ const a=document.getElementById("去面板"); a.href=j.url; a.style.display="block"; }
+}).catch(()=>{});
 document.getElementById("登").onsubmit=async e=>{
   e.preventDefault();
   const 密=e.target.pass.value;
@@ -270,6 +287,90 @@ def _清饼() -> str:
     return f"Set-Cookie: {_饼干名}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0\r\n"
 
 
+_面板缓存: dict = {"t": 0.0, "port": "", "path": "/", "https": False}
+_库们 = (
+    "/etc/x-ui/x-ui.db",
+    "/etc/x-ui-yg/x-ui-yg.db",
+    "/usr/local/x-ui/x-ui.db",
+)
+
+
+def _请求主机(头: dict[str, str]) -> str:
+    主 = (头.get("x-forwarded-host") or 头.get("host") or "").split(",")[0].strip()
+    if 主.startswith("["):
+        主 = 主.split("]", 1)[0].lstrip("[")
+    elif 主.count(":") == 1:
+        主 = 主.rsplit(":", 1)[0]
+    if 主 in ("", "0.0.0.0", "127.0.0.1", "localhost", "::", "::1"):
+        for p in ("/usr/local/x-ui/xip",):
+            try:
+                行 = Path(p).read_text(encoding="utf-8").splitlines()
+                if 行 and 行[0].strip():
+                    return 行[0].strip()
+            except Exception:
+                pass
+    return 主
+
+
+def _读面板() -> tuple[str, str, bool]:
+    now = time.time()
+    if now - float(_面板缓存["t"]) < 30 and _面板缓存["port"]:
+        return str(_面板缓存["port"]), str(_面板缓存["path"]), bool(_面板缓存["https"])
+    port, path, https = "", "/", Path("/root/ygkkkca/cert.crt").is_file() or Path("/root/ygkkkca/ca.log").is_file()
+    for p in _库们:
+        if not os.path.isfile(p):
+            continue
+        try:
+            con = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+            try:
+                表 = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+                tbl = "settings" if "settings" in 表 else ("setting" if "setting" in 表 else "")
+                if not tbl:
+                    continue
+                kv = {str(k): ("" if v is None else str(v)) for k, v in con.execute(f"SELECT key, value FROM {tbl}")}
+            finally:
+                con.close()
+        except Exception:
+            continue
+        port = kv.get("webPort") or kv.get("port") or port
+        path = kv.get("webBasePath") or kv.get("basePath") or path
+        cert = kv.get("webCertFile") or kv.get("cert") or ""
+        if cert and os.path.isfile(cert):
+            https = True
+        if str(port).isdigit():
+            break
+    if not str(port).isdigit():
+        try:
+            文 = subprocess.check_output(["/usr/local/x-ui/x-ui", "setting", "-show"], text=True, timeout=5)
+        except Exception:
+            文 = ""
+        for 行 in 文.replace("\r", "\n").split("\n"):
+            low = 行.lower()
+            if "webbase" in low or "path" in low:
+                词 = 行.split()
+                if 词:
+                    path = 词[-1]
+            elif "port" in low:
+                for 词 in reversed(行.replace(":", " ").split()):
+                    if 词.isdigit():
+                        port = 词
+                        break
+    if not str(path).startswith("/"):
+        path = "/" + str(path).lstrip("/")
+    _面板缓存.update({"t": now, "port": str(port), "path": path, "https": https})
+    return str(port), path, https
+
+
+def 面板地址(头: dict[str, str]) -> str:
+    主 = _请求主机(头)
+    port, path, https = _读面板()
+    if not 主 or not str(port).isdigit():
+        return ""
+    if path == "/":
+        path = ""
+    return f"{'https' if https else 'http'}://{主}:{port}{path}"
+
+
 async def _读请求(读: asyncio.StreamReader) -> tuple[str, str, bytes, dict[str, str]]:
     头 = b""
     while b"\r\n\r\n" not in 头:
@@ -311,7 +412,9 @@ async def 处理管理(读, 写, 池子: 池) -> None:
         数据 = _身(体)
         密 = _密(池子)
 
-        if 法 == "POST" and 路 == "/api/login":
+        if 法 == "GET" and 路 == "/api/panel":
+            _json(写, 200, {"ok": True, "url": 面板地址(头)})
+        elif 法 == "POST" and 路 == "/api/login":
             给 = str(数据.get("pass") or "")
             if _同(给, 密):
                 _json(写, 200, {"ok": True}, _置饼(密))
@@ -328,7 +431,9 @@ async def 处理管理(读, 写, 池子: 池) -> None:
         elif 法 == "GET" and 路 in ("/", "/index.html"):
             _html(写, 页)
         elif 法 == "GET" and 路 == "/api/status":
-            _json(写, 200, 池子.总览())
+            身 = 池子.总览()
+            身["panel_url"] = 面板地址(头)
+            _json(写, 200, 身)
         elif 法 == "POST" and 路 == "/api/add":
             串 = str(数据.get("串") or "")
             成, 错们 = 0, []
