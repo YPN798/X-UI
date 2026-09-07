@@ -2833,9 +2833,9 @@ srv='{ "address": "127.0.0.1", "port": 41000 }'
 # 都在 www.dola.com，HTTPS 只能按主机分流，不能按路径只代理这一条。
 # WS 同属生成链路。其余域名走 VPS 本机 IP。
 local def_proxy='full:www.dola.com,full:dola.com,full:wss-normal-i18n.dola.com'
-local 用域=${XUI_PROXY_DOMAIN:-$def_proxy}
+local proxy_dom=${XUI_PROXY_DOMAIN:-$def_proxy}
 local pd
-pd=$(d2j "$用域")
+pd=$(d2j "$proxy_dom")
 
 # 强制直连的域名（CDN、图床、打点）
 local def_direct='domain:ibyteimg.com,domain:ciciai.com,domain:byteintlapi.com,domain:bytevcloudapi.com,domain:ibytedtos.com,domain:zijieapi.com'
@@ -2843,7 +2843,7 @@ local dd
 dd=$(d2j "${XUI_DIRECT_DOMAIN:-$def_direct}")
 
 # 只有用 domain:dola.com 吃掉整棵子域时，才排除视频 CDN
-if [[ "$用域" == *domain:dola.com* ]]; then
+if [[ "$proxy_dom" == *domain:dola.com* ]]; then
 local vcdn='"regexp:^v[0-9]+-dola\\.dola\\.com$"'
 dd="$vcdn,$dd"
 fi
@@ -3099,27 +3099,51 @@ cp -f /tmp/xui-bridge/xui-bridge.service /etc/systemd/system/xui-bridge.service
 systemctl daemon-reload
 systemctl enable xui-bridge >/dev/null 2>&1
 systemctl restart xui-bridge
-local 公网
-公网=$(curl -s4 --max-time 4 ifconfig.me 2>/dev/null || cat /usr/local/x-ui/xip 2>/dev/null | sed -n 1p)
 green "本机桥 SOCKS 127.0.0.1:41000"
-green "管理页 http://${公网:-公网IP}:41001/  密码见 /etc/xui-bridge/config.json 的 web_pass"
 }
 
-# 装/更新桥，写入最低消耗，打印公网管理页
+print_access(){
+local pubip webpass panel_ca acp panel_user panel_pass panel_port panel_path
+pubip=$(curl -s4 --max-time 4 ifconfig.me 2>/dev/null)
+[[ -z $pubip ]] && pubip=$(cat /usr/local/x-ui/xip 2>/dev/null | sed -n 1p)
+[[ -z $pubip ]] && pubip="VPS公网IP"
+webpass=$(python3 -c "import json; print(json.load(open('/etc/xui-bridge/config.json',encoding='utf-8')).get('web_pass',''))" 2>/dev/null)
+panel_ca=$(cat /root/ygkkkca/ca.log 2>/dev/null)
+if [[ -x /usr/local/x-ui/x-ui ]]; then
+acp=$(/usr/local/x-ui/x-ui setting -show 2>/dev/null)
+panel_user=$(echo "$acp" | awk '{print $2}')
+panel_pass=$(echo "$acp" | awk '{print $4}')
+panel_port=$(echo "$acp" | awk '{print $6}')
+panel_path=$(echo "$acp" | awk '{print $8}')
+fi
+[[ -n ${username:-} ]] && panel_user=$username
+[[ -n ${password:-} ]] && panel_pass=$password
+[[ -n ${port:-} ]] && panel_port=$port
+[[ -n ${path:-} ]] && panel_path=$path
+echo
+green "=============== 安装完成 ==============="
+if [[ -n $panel_ca && -n $panel_port ]]; then
+echo -e "面板地址：${blue}https://${panel_ca}:${panel_port}${panel_path}${plain}"
+elif [[ -n $panel_port ]]; then
+echo -e "面板地址：${blue}http://${pubip}:${panel_port}${panel_path}${plain}"
+fi
+[[ -n $panel_user ]] && echo -e "用户名  ：${blue}${panel_user}${plain}"
+[[ -n $panel_pass ]] && echo -e "密码    ：${blue}${panel_pass}${plain}"
+echo -e "管理命令：${blue}x-ui${plain}"
+echo -e "桥管理页：${blue}http://${pubip}:41001/${plain}"
+echo -e "桥密码  ：${blue}${webpass:-YPN940815...}${plain}"
+echo -e "SOCKS    ：${blue}127.0.0.1:41000（仅本机）${plain}"
+green "========================================"
+echo
+yellow "请立刻保存以上信息。"
+}
+
+# 装/更新桥，写入最低消耗，打印全部访问信息
 finish_bridge(){
 install_bridge || { red "桥未装上"; return 1; }
 if [[ -f /tmp/xui-bridge/最低消耗.json ]]; then
 XUI_TPL=/tmp/xui-bridge/最低消耗.json apply_tpl || true
 fi
-local 公网 密
-公网=$(curl -s4 --max-time 4 ifconfig.me 2>/dev/null || cat /usr/local/x-ui/xip 2>/dev/null | sed -n 1p)
-密=$(python3 -c "import json; print(json.load(open('/etc/xui-bridge/config.json',encoding='utf-8')).get('web_pass',''))" 2>/dev/null)
-echo
-green "=============== 桥已就绪 ==============="
-echo -e "桥管理页：${blue}http://${公网:-公网IP}:41001/${plain}"
-echo -e "管理密码：${blue}${密:-见 /etc/xui-bridge/config.json}${plain}"
-echo -e "SOCKS 仅本机：${blue}127.0.0.1:41000${plain}"
-green "========================================"
 }
 
 # 全自动安装：不问任何问题。已有面板则只补桥和分流。
@@ -3127,6 +3151,7 @@ auto_install(){
 if [[ -f /usr/local/x-ui/x-ui ]]; then
 yellow "检测到已安装 x-ui，跳过面板，只更新桥和最低消耗分流"
 finish_bridge
+print_access
 return 0
 fi
 
@@ -3174,24 +3199,7 @@ xuigo
 cronxui
 sleep 2
 
-xip1=$(cat /usr/local/x-ui/xip 2>/dev/null | sed -n 1p)
-local ca=$(cat /root/ygkkkca/ca.log 2>/dev/null)
-echo
-green "=============== 安装完成 ==============="
-if [[ -n $ca ]]; then
-echo -e "面板地址：${blue}https://${ca}:${port}/${path}${plain}"
-else
-echo -e "面板地址：${blue}http://${xip1}:${port}/${path}${plain}"
-fi
-echo -e "用户名  ：${blue}${username}${plain}"
-echo -e "密码    ：${blue}${password}${plain}"
-echo -e "管理命令：${blue}x-ui${plain}"
-echo -e "x-ui状态: 已运行"
-echo -e "桥管理页：${blue}http://${xip1}:41001/${plain}"
-echo -e "桥密码  ：${blue}$(python3 -c "import json; print(json.load(open('/etc/xui-bridge/config.json',encoding='utf-8')).get('web_pass',''))" 2>/dev/null)${plain}"
-green "========================================"
-echo
-yellow "请立刻保存以上信息。面板端口已在防火墙放行。"
+print_access
 }
 #================================================
 
@@ -3459,6 +3467,7 @@ export NEEDRESTART_MODE=a
 auto_install
 elif [[ $XUI_BRIDGE_ONLY == 1 ]]; then
 finish_bridge
+print_access
 else
 show_menu
 fi
