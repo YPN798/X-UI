@@ -16,6 +16,17 @@ from 解析 import 本机主机, 拆, 给上游, 规范协议
 
 日志 = logging.getLogger("xui桥")
 
+
+def 人读(n: int) -> str:
+    n = max(0, int(n or 0))
+    if n < 1024:
+        return f"{n} B"
+    if n < 1024 * 1024:
+        return f"{n / 1024:.1f} KB"
+    if n < 1024 * 1024 * 1024:
+        return f"{n / (1024 * 1024):.2f} MB"
+    return f"{n / (1024 * 1024 * 1024):.2f} GB"
+
 默认 = {
     "listen": "127.0.0.1",
     "port": 41000,
@@ -47,6 +58,8 @@ class 条:
         self.健康 = bool(信.get("健康", True))
         self.失败 = int(信.get("失败") or 0)
         self.连接 = 0
+        self.上行 = int(信.get("上行") or 0)
+        self.下行 = int(信.get("下行") or 0)
         self.上次错误 = str(信.get("上次错误") or "")
         self.上次切换 = str(信.get("上次切换") or "")
 
@@ -72,6 +85,10 @@ class 条:
             "健康": self.健康,
             "失败": self.失败,
             "连接": self.连接,
+            "上行": self.上行,
+            "下行": self.下行,
+            "上行文": 人读(self.上行),
+            "下行文": 人读(self.下行),
             "上次错误": self.上次错误,
             "上次切换": self.上次切换,
         }
@@ -104,6 +121,7 @@ class 池:
                 self._塞(一, 落盘=False)
             except ValueError as 错:
                 日志.warning("跳过非法代理：%s", 错)
+        self._复流量()
 
     def 落盘(self) -> None:
         self.径.parent.mkdir(parents=True, exist_ok=True)
@@ -130,6 +148,25 @@ class 池:
 
     def 状态径(self) -> Path:
         return self.径.with_name("状态.json")
+
+    def _复流量(self) -> None:
+        p = self.状态径()
+        if not p.is_file():
+            return
+        try:
+            文 = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            return
+        旧: dict[str, dict] = {}
+        for 一 in 文.get("池") or []:
+            if isinstance(一, dict) and 一.get("地址"):
+                旧[str(一["地址"])] = 一
+        for 一 in self.条们:
+            命 = 旧.get(一.脱敏())
+            if not 命:
+                continue
+            一.上行 = int(命.get("上行") or 0)
+            一.下行 = int(命.get("下行") or 0)
 
     def 写状态(self) -> None:
         出 = {
@@ -235,6 +272,12 @@ class 池:
     async def 出(self, 一: 条) -> None:
         async with self.锁:
             一.连接 = max(0, 一.连接 - 1)
+        self.写状态()
+
+    async def 记流量(self, 一: 条, 上行: int = 0, 下行: int = 0) -> None:
+        async with self.锁:
+            一.上行 += max(0, int(上行 or 0))
+            一.下行 += max(0, int(下行 or 0))
 
     async def 报成(self, 一: 条) -> None:
         async with self.锁:
@@ -330,5 +373,9 @@ class 池:
             "上次补": self.上次补,
             "健康": len(self.健康们()),
             "总数": len(self.条们),
+            "上行": sum(一.上行 for 一 in self.条们),
+            "下行": sum(一.下行 for 一 in self.条们),
+            "上行文": 人读(sum(一.上行 for 一 in self.条们)),
+            "下行文": 人读(sum(一.下行 for 一 in self.条们)),
             "池": [一.快照() for 一 in self.条们],
         }

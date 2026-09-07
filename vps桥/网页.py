@@ -79,7 +79,7 @@ th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--线);font-si
 </div>
 <div class="卡">
   <table>
-    <thead><tr><th>地址</th><th>状态</th><th>连接</th><th>来源</th><th>说明</th><th></th></tr></thead>
+    <thead><tr><th>地址</th><th>状态</th><th>连接</th><th>上行</th><th>下行</th><th>来源</th><th>说明</th><th></th></tr></thead>
     <tbody id="表"></tbody>
   </table>
 </div>
@@ -98,6 +98,7 @@ async function api(path, body){
 function 填(d){
   document.getElementById("概").innerHTML =
     "SOCKS <b>"+d.listen+"</b> · 管理 <b>"+d.web+"</b> · 健康 "+d.健康+"/"+d.总数+
+    " · 上行 "+(d.上行文||"0 B")+" · 下行 "+(d.下行文||"0 B")+
     (d.上次补 ? "<br><span class=次>"+d.上次补+"</span>" : "");
   const f=document.getElementById("设");
   f.mode.value=d.mode; f.sticky.value=d.sticky==="关"?"":d.sticky;
@@ -110,7 +111,8 @@ function 填(d){
     const tr=document.createElement("tr");
     const 态=p.启用?(p.健康?"<span class=好>健康</span>":"<span class=坏>摘除</span>"):"<span class=次>停</span>";
     tr.innerHTML="<td>"+p.地址+" <span class=徽章>"+p.方案+"</span></td><td>"+态+
-      "</td><td>"+p.连接+"</td><td>"+p.来源+"</td><td class=次>"+(p.上次错误||p.上次切换||"")+"</td><td></td>";
+      "</td><td>"+p.连接+"</td><td>"+(p.上行文||"0 B")+"</td><td>"+(p.下行文||"0 B")+
+      "</td><td>"+p.来源+"</td><td class=次>"+(p.上次错误||p.上次切换||"")+"</td><td></td>";
     const b=document.createElement("button");
     b.className="红"; b.textContent="删除";
     b.onclick=async()=>{ await api("/api/del",{id:p.号}); 刷(); };

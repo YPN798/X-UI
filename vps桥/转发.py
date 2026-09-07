@@ -20,7 +20,8 @@ async def _读准(读: asyncio.StreamReader, n: int) -> bytes:
     return 数据
 
 
-async def _对拷(甲: asyncio.StreamReader, 乙: asyncio.StreamWriter) -> None:
+async def _对拷(甲: asyncio.StreamReader, 乙: asyncio.StreamWriter, 记=None) -> None:
+    累 = 0
     try:
         while True:
             块 = await 甲.read(65536)
@@ -28,9 +29,18 @@ async def _对拷(甲: asyncio.StreamReader, 乙: asyncio.StreamWriter) -> None:
                 break
             乙.write(块)
             await 乙.drain()
+            累 += len(块)
+            if 记 is not None and 累 >= 262144:
+                await 记(累)
+                累 = 0
     except (asyncio.CancelledError, ConnectionError, OSError):
         pass
     finally:
+        if 记 is not None and 累:
+            try:
+                await 记(累)
+            except Exception:
+                pass
         try:
             乙.close()
         except Exception:
@@ -198,7 +208,14 @@ async def 处理客户(读: asyncio.StreamReader, 写: asyncio.StreamWriter, 池
         await 池子.进(选)
         try:
             上读, 上写 = 上
-            await asyncio.gather(_对拷(读, 上写), _对拷(上读, 写))
+
+            async def 记上(n: int) -> None:
+                await 池子.记流量(选, 上行=n)
+
+            async def 记下(n: int) -> None:
+                await 池子.记流量(选, 下行=n)
+
+            await asyncio.gather(_对拷(读, 上写, 记上), _对拷(上读, 写, 记下))
         finally:
             await 池子.出(选)
     except Exception as 错:
