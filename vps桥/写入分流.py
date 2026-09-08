@@ -183,11 +183,24 @@ def 重启面板() -> str:
 
 
 if __name__ == "__main__":
+    # 重启面板会掐掉从这台机器自己代理出去的 SSH，屏幕上的输出就看不到了
+    记 = Path("/tmp/写入分流.log")
+    行们: list[str] = []
+
+    def 说(句: str) -> None:
+        行们.append(句)
+        print(句)
+        try:
+            记.write_text("\n".join(行们) + "\n", encoding="utf-8")
+        except OSError:
+            pass
+
     库 = 找库()
     if 库:
         for 句 in 补数据库(库):
-            print(句)
+            说(句)
     else:
-        print("没找到面板数据库，重启后分流可能会被面板覆盖掉")
-    print("已写分流", 写入(), time.strftime("%H:%M:%S"))
-    print(重启面板())
+        说("没找到面板数据库，重启后分流可能会被面板覆盖掉")
+    说(f"已写分流 {写入()} {time.strftime('%H:%M:%S')}")
+    说("接下来重启面板，如果你的 SSH 是从这台机器自己代理出去的，会断一下，重连即可")
+    说(重启面板())
