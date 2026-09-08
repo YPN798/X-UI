@@ -85,22 +85,26 @@ async def 经上游连(一: 条, 目标主: str, 目标口: int, 秒: float):
     备 = "http" if 首选 == "socks5" else ("socks5" if 首选 == "http" else "")
     最后: Exception | None = None
     for 方案 in (首选, 备) if 备 else (首选,):
-        读 = 写 = None
+        # TCP 都连不上，换个协议再试也是白等一次超时，直接抛给上层换代理
+        读, 写 = await _连(一.主机, 一.端口, 秒)
         try:
-            读, 写 = await _连(一.主机, 一.端口, 秒)
-            await _按方案握(读, 写, 一, 方案, 目标主, 目标口)
+            await asyncio.wait_for(
+                _按方案握(读, 写, 一, 方案, 目标主, 目标口),
+                timeout=max(2.0, 秒),
+            )
             if 方案 != 首选:
                 一.方案 = 方案
                 日志.info("上游 %s 实际是 %s，已改过来", 一.脱敏(), 方案)
             return 读, 写
         except Exception as 错:
             最后 = 错
-            if 写 is not None:
-                try:
-                    写.close()
-                    await 写.wait_closed()
-                except Exception:
-                    pass
+            try:
+                写.close()
+            except Exception:
+                pass
+            # 协议认错会很快报错或断开；一直不吭声的换个协议问也是同样不吭声
+            if isinstance(错, asyncio.TimeoutError):
+                break
     raise 最后 or OSError("上游握手失败")
 
 

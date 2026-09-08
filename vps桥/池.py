@@ -185,6 +185,7 @@ class 池:
         self.总下行 = 0
         self.起算 = time.strftime("%Y-%m-%d %H:%M")
         self._流量落盘 = 0.0
+        self._补中 = False
         self.读盘()
 
     def 读盘(self) -> None:
@@ -474,7 +475,26 @@ class 池:
                 要补 = True
             self.写状态()
         if 要补:
-            await self.补齐()
+            # 补池要跑一趟闪臣接口，不能让正在等着的那个请求陪着卡
+            self._后台补齐()
+
+    def _后台补齐(self) -> None:
+        if self._补中:
+            return
+
+        async def 跑() -> None:
+            try:
+                await self.补齐()
+            except Exception as 错:
+                日志.warning("后台补池失败：%s", 错)
+            finally:
+                self._补中 = False
+
+        try:
+            asyncio.get_running_loop().create_task(跑())
+            self._补中 = True
+        except RuntimeError:
+            pass
 
     # ---- 闪臣动态流量接口 ------------------------------------------------
 
