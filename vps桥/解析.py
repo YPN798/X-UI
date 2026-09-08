@@ -18,6 +18,8 @@ def 规范协议(协议: str) -> str:
     文 = (协议 or "http").strip().lower()
     if 文 in ("sk5", "s5", "socks", "socks5h", "sock5", "socks5"):
         return "socks5"
+    if 文 in ("s4", "sk4", "sock4", "socks4", "socks4a"):
+        return "socks4"
     return "http"
 
 
@@ -97,9 +99,12 @@ def 给上游(信: dict) -> str:
     if not 主 or not 口:
         raise ValueError("代理缺主机或端口")
     方案 = 规范协议(信.get("方案") or "http")
-    前 = "socks5" if 方案 == "socks5" else "http"
+    前 = 方案 if 方案 in ("socks5", "socks4") else "http"
     户 = (信.get("用户") or "").strip()
     密 = (信.get("密码") or "").strip()
+    if 方案 == "socks4":
+        # SOCKS4 只有 userid，没有密码字段
+        return f"{前}://{quote(户, safe='')}@{主}:{口}" if 户 else f"{前}://{主}:{口}"
     if 户 or 密:
         return f"{前}://{quote(户, safe='')}:{quote(密, safe='')}@{主}:{口}"
     return f"{前}://{主}:{口}"

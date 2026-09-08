@@ -48,6 +48,17 @@ async def _对拷(甲: asyncio.StreamReader, 乙: asyncio.StreamWriter, 记=None
             pass
 
 
+def _域名字节(主机: str) -> bytes:
+    """域名转字节。idna 对下划线、超长标签等会抛错，退回原样发送。"""
+    try:
+        名 = 主机.encode("idna")
+    except Exception:
+        名 = 主机.encode("utf-8", "replace")
+    if len(名) > 255:
+        raise OSError("目标主机名过长")
+    return 名
+
+
 async def _连(主机: str, 端口: int, 秒: float):
     return await asyncio.wait_for(
         asyncio.open_connection(主机, 端口),
@@ -61,6 +72,8 @@ async def 经上游连(一: 条, 目标主: str, 目标口: int, 秒: float):
     try:
         if 一.方案 == "socks5":
             await _socks5握手(读, 写, 一, 目标主, 目标口)
+        elif 一.方案 == "socks4":
+            await _socks4握手(读, 写, 一, 目标主, 目标口)
         else:
             await _http握手(读, 写, 一, 目标主, 目标口)
     except Exception:
@@ -119,10 +132,27 @@ def _socks5请求(主机: str, 端口: int) -> bytes:
         return b"\x05\x01\x00\x04" + socket.inet_pton(socket.AF_INET6, 主机) + 口
     except OSError:
         pass
-    名 = 主机.encode("idna")
-    if len(名) > 255:
-        raise OSError("目标主机名过长")
+    名 = _域名字节(主机)
     return b"\x05\x01\x00\x03" + bytes([len(名)]) + 名 + 口
+
+
+async def _socks4握手(读, 写, 一: 条, 目标主: str, 目标口: int) -> None:
+    """SOCKS4：目标是 IPv4 就直接发；是域名则用 SOCKS4a（DSTIP 填 0.0.0.1，包尾附域名）。"""
+    if ":" in 目标主:
+        raise OSError("SOCKS4 不支持 IPv6 目标")
+    户 = (一.用户 or "").encode("utf-8", "replace")
+    口 = struct.pack("!H", int(目标口))
+    try:
+        写.write(b"\x04\x01" + 口 + socket.inet_aton(目标主) + 户 + b"\x00")
+    except OSError:
+        名 = _域名字节(目标主)
+        写.write(b"\x04\x01" + 口 + b"\x00\x00\x00\x01" + 户 + b"\x00" + 名 + b"\x00")
+    await 写.drain()
+    答 = await _读准(读, 8)
+    if 答[0] != 0:
+        raise OSError(f"上游不是 SOCKS4，版本字节 {答[0]}")
+    if 答[1] != 90:
+        raise OSError(f"上游 SOCKS4 拒绝，应答码 {答[1]}")
 
 
 async def _http握手(读, 写, 一: 条, 目标主: str, 目标口: int) -> None:
@@ -183,7 +213,7 @@ async def 处理客户(读: asyncio.StreamReader, 写: asyncio.StreamWriter, 池
             目标主 = socket.inet_ntoa(await _读准(读, 4))
         elif atyp == 3:
             n = (await _读准(读, 1))[0]
-            目标主 = (await _读准(读, n)).decode("idna", "replace")
+            目标主 = (await _读准(读, n)).decode("utf-8", "replace")
         elif atyp == 4:
             目标主 = socket.inet_ntop(socket.AF_INET6, await _读准(读, 16))
         else:
