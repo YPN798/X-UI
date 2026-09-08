@@ -694,6 +694,8 @@ class 池:
         return {
             "开": self.闪臣开(),
             "有码": bool(str(self.设.get("sc_code") or "").strip()),
+            # 只报位数，好让人一眼看出存进去的是不是自己那串
+            "码长": len(str(self.设.get("sc_code") or "").strip()),
             "余额": self.闪臣态.get("余额") or "",
             "有套餐": bool(self.闪臣态.get("有套餐")),
             "余额说": self.闪臣态.get("余额说") or "",

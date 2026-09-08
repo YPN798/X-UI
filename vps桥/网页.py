@@ -73,7 +73,10 @@ code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px;word-br
       <input name="sc_key" placeholder="闪臣个人中心获取" style="width:100%">
     </label>
     <label style="flex:1 1 200px">安全码
-      <input name="sc_code" type="password" autocomplete="off" style="width:100%">
+      <!-- 不 readonly 的话，浏览器会把本站保存的登录密码自动填进来，
+           一点保存就把好好的安全码冲成登录密码，闪臣直接回 1006 -->
+      <input name="sc_code" type="password" autocomplete="new-password" readonly
+             onfocus="this.removeAttribute('readonly')" style="width:100%">
     </label>
     <button type="submit" id="开跑">保存并自动开跑</button>
   </form>
@@ -206,6 +209,9 @@ function 填闪(s){
         (s.刷时间?" <span class=次>"+esc(s.刷时间)+" 刷的</span>":"")+"</div>";
   if(s.白名单说) h+="<div class='条 次'>"+esc(s.白名单说)+"</div>";
   if(!s.有码) h+="<div class='条 坏'>没存安全码，加删白名单都用不了。</div>";
+  else if(/1006/.test(s.白名单说||"")) h+="<div class='条 坏'>存进去的是 "+(s.码长||0)+
+    " 位。位数对不上的话，多半是浏览器把本站登录密码自动填进那一格了——"+
+    "重新手打一遍安全码再保存。</div>";
   if(白.length){
     h+="<table><thead><tr><th>白名单 IP</th><th>备注</th><th></th></tr></thead><tbody id=白表></tbody></table>";
   }else{
@@ -242,7 +248,8 @@ function 填(d){
         "</b><span class=次>（自 "+esc(d.起算||"")+" 起算，换新和重启都不清零）</span></div>";
   if(s.开){
     h+="<div>闪臣 Key <span class=好>已保存</span> · 安全码 "+
-       (s.有码?"<span class=好>已保存</span>":"<span class=坏>没保存</span>")+
+       (s.有码?"<span class=好>已保存</span><span class=次>（"+(s.码长||0)+" 位）</span>"
+              :"<span class=坏>没保存</span>")+
        " · 剩余 <b>"+esc(s.余额||"查询中…")+"</b> · 地区 <b>"+esc(s.地区||"随机")+"</b>"+
        " · 每批 <b>"+(d.sc_count||30)+"</b> 条 · 自动换新 "+
        (d.auto_rotate?("每 <b>"+d.auto_rotate+"</b> 秒"):"<span class=坏>没开</span>")+
