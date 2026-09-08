@@ -184,6 +184,7 @@ class 池:
         self.总上行 = 0
         self.总下行 = 0
         self.起算 = time.strftime("%Y-%m-%d %H:%M")
+        self._流量落盘 = 0.0
         self.读盘()
 
     def 读盘(self) -> None:
@@ -438,6 +439,11 @@ class 池:
             一.下行 += 下
             self.总上行 += 上
             self.总下行 += 下
+        # 长连接以前要攒满 256KB 或断开才写盘，面板会半天不动
+        now = time.monotonic()
+        if now - float(self._流量落盘 or 0) >= 2:
+            self._流量落盘 = now
+            self.写状态()
 
     async def 清流量(self) -> str:
         async with self.锁:

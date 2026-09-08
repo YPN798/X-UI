@@ -32,7 +32,7 @@ async def _对拷(甲: asyncio.StreamReader, 乙: asyncio.StreamWriter, 记=None
             乙.write(块)
             await 乙.drain()
             累 += len(块)
-            if 记 is not None and 累 >= 262144:
+            if 记 is not None and 累 >= 4096:
                 await 记(累)
                 累 = 0
     except (asyncio.CancelledError, ConnectionError, OSError):
