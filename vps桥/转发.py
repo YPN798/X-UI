@@ -286,6 +286,13 @@ async def 开socks(池子: 池) -> asyncio.AbstractServer:
 
 async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
     上次换 = 0.0
+    上次刷 = 0.0
+    if 池子.可自动白():
+        try:
+            _, 说 = await asyncio.to_thread(池子.加白名单)
+            日志.info("开机自动加白名单：%s", 说)
+        except Exception as 错:
+            日志.warning("开机加白名单失败：%s", 错)
     while not 停.is_set():
         间隔 = max(8, int(池子.设.get("check_interval") or 30))
         秒 = float(池子.设.get("connect_timeout") or 8)
@@ -309,6 +316,12 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
             await asyncio.gather(*(验(一) for 一 in 拷))
         换期 = max(0, int(池子.设.get("auto_rotate") or 0))
         现在 = time.monotonic()
+        if 池子.闪臣开() and 现在 - 上次刷 >= 60:
+            上次刷 = 现在
+            try:
+                await asyncio.to_thread(池子.刷闪臣)
+            except Exception as 错:
+                日志.warning("刷闪臣状态失败：%s", 错)
         try:
             if 换期 and 现在 - 上次换 >= 换期:
                 上次换 = 现在

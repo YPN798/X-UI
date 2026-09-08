@@ -45,6 +45,13 @@ table{width:100%;border-collapse:collapse}
 th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--线);font-size:13px}
 .好{color:var(--绿)} .坏{color:var(--红)}
 .徽章{display:inline-block;padding:1px 7px;border-radius:999px;background:#eef2f6;font-size:12px}
+h2{font-size:15px;margin:0 0 4px}
+.卡 p.次{margin:0 0 12px}
+#闪态{margin-top:12px;border-top:1px solid var(--线);padding-top:10px;font-size:13px}
+#闪态 .条{margin:0 0 6px}
+#闪态 table{margin-top:6px}
+#闪态 td,#闪态 th{padding:5px 6px}
+code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px;word-break:break-all}
 </style>
 </head>
 <body>
@@ -52,6 +59,40 @@ th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--线);font-si
 <h1>代理池 <button class="灰" id="退" style="float:right">退出</button><a class="跳" id="去面板" target="_blank" rel="noopener">打开 X-UI 面板</a></h1>
 <p class="次">Xray 只连本机 41000。这里改池、换负载，不用重载面板。点绿色按钮进 X-UI。</p>
 <div class="卡" id="概"></div>
+<div class="卡">
+  <h2>闪臣动态流量</h2>
+  <p class="次">填上 API Key 和安全码，桥会自己加白名单、自己提代理、到点自己换一批。</p>
+  <form id="闪" class="行">
+    <label style="flex:1 1 260px">API Key
+      <input name="sc_key" placeholder="闪臣个人中心获取，留空=不用闪臣" style="width:100%">
+    </label>
+    <label>安全码 <input name="sc_code" type="password" autocomplete="new-password" placeholder="留空=不改"></label>
+    <label>每次提几条 <input name="sc_count" type="number" min="1" max="500"></label>
+    <label>IP 保持多久
+      <select name="sc_time">
+        <option value="0">5-30 分钟（推荐）</option>
+        <option value="2">1-6 小时</option>
+        <option value="1">每请求一换（池里只会有 1 条）</option>
+      </select>
+    </label>
+    <label>套餐协议
+      <select name="sc_protocol">
+        <option value="http">http</option>
+        <option value="s5">socks5</option>
+      </select>
+    </label>
+    <label>国家 <input name="sc_cntry" placeholder="留空随机，如 JP" style="min-width:110px"></label>
+    <label>州/省 <input name="sc_state" placeholder="如 Aomori" style="min-width:110px"></label>
+    <label>城市 <input name="sc_city" placeholder="如 Aomori" style="min-width:110px"></label>
+    <label>撞白名单自动加
+      <select name="sc_white"><option value="1">开</option><option value="0">关</option></select>
+    </label>
+    <button type="submit">保存并生效</button>
+    <button type="button" class="灰" id="加白">把本机加进白名单</button>
+    <button type="button" class="灰" id="刷闪">刷新余额和白名单</button>
+  </form>
+  <div id="闪态"></div>
+</div>
 <div class="卡">
   <form id="设" class="行">
     <label>分发
@@ -78,8 +119,8 @@ th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--线);font-si
         <option value="http">强制 http</option>
       </select>
     </label>
-    <label style="flex:1 1 100%">提取接口 fetch_url
-      <input name="fetch_url" placeholder="https://global.shanchendaili.com/flow-api/get-ip.html?key=KEY&amp;count=10&amp;time=0&amp;protocol=http&amp;type=text&amp;pattern=1&amp;textSep=3" style="width:100%">
+    <label style="flex:1 1 100%">别家的提取接口 fetch_url<span class="次" id="盖"></span>
+      <input name="fetch_url" placeholder="用闪臣就不用填这里" style="width:100%">
     </label>
     <label>fetch_cmd <input name="fetch_cmd" placeholder="命令 stdout，一行一条" style="min-width:200px"></label>
     <button type="submit">保存设置</button>
@@ -118,14 +159,67 @@ function 挂链(u){
   if(!a||!u) return;
   a.href=u; a.style.display="inline-block";
 }
-function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+// 四秒刷一次，正在打字的框不许动
+function 塞(f,名,值){
+  const el=f?f[名]:null;
+  if(!el || el===document.activeElement) return;
+  el.value=值;
+}
+function 填闪(s){
+  const 盒=document.getElementById("闪态");
+  if(!s || !s.开){
+    盒.innerHTML="<span class=次>还没填 API Key，闪臣这套没启用。</span>";
+    document.getElementById("盖").textContent="";
+    return;
+  }
+  document.getElementById("盖").textContent="（闪臣已接管，这里填了也不生效）";
+  const 白=s.白名单||[];
+  const 余=s.余额?("<b>"+esc(s.余额)+"</b>"):"<span class=次>还没查到</span>";
+  const 本=s.本机IP?esc(s.本机IP):"没问到";
+  const 态=s.本机IP?(s.已加白?"<span class=好>已在白名单</span>"
+                            :"<span class=坏>不在白名单，提取会被 1004 拒</span>")
+                  :"<span class=次>白名单状态未知</span>";
+  let h="<div class=条>剩余流量 "+余+(s.余额说?" <span class=坏>"+esc(s.余额说)+"</span>":"")+
+        " · 本机出口 IP <b>"+本+"</b> "+态+
+        (s.刷时间?" <span class=次>"+esc(s.刷时间)+" 刷的</span>":"")+"</div>";
+  if(s.白名单说) h+="<div class='条 次'>"+esc(s.白名单说)+"</div>";
+  if(!s.有码) h+="<div class='条 坏'>没存安全码，加删白名单都用不了。</div>";
+  if(白.length){
+    h+="<table><thead><tr><th>白名单 IP</th><th>备注</th><th></th></tr></thead><tbody id=白表></tbody></table>";
+  }else{
+    h+="<div class='条 次'>白名单是空的。</div>";
+  }
+  h+="<div class=条 style=margin-top:8px>提取地址 <code>"+esc(s.提取地址||"")+"</code></div>";
+  盒.innerHTML=h;
+  const tb=document.getElementById("白表");
+  if(!tb) return;
+  白.forEach(w=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML="<td></td><td class=次></td><td></td>";
+    tr.cells[0].textContent=w.ip||"";
+    tr.cells[1].textContent=w.备注||"";
+    const b=document.createElement("button");
+    b.className="红"; b.textContent="删除";
+    b.onclick=async()=>{
+      if(!confirm("从闪臣白名单删掉 "+(w.ip||w.id)+"？")) return;
+      try{ await api("/api/sc/unwhite",{id:w.id,ip:w.ip}); }catch(e){ alert(e.message); }
+      刷();
+    };
+    tr.cells[2].appendChild(b);
+    tb.appendChild(tr);
+  });
+}
 function 填(d){
   挂链(d.panel_url);
+  const s=d.闪臣||{};
   document.getElementById("概").innerHTML =
     "SOCKS <b>"+esc(d.listen)+"</b> · 管理 <b>"+esc(d.web)+"</b> · 健康 "+(d.健康||0)+"/"+(d.总数||0)+
     " · 验活 <b>"+esc(d.check_host||"www.dola.com")+":"+(d.check_port||443)+"</b>"+
     " · 上行 "+esc(d.上行文||"0 B")+" · 下行 "+esc(d.下行文||"0 B")+
+    (s.开&&s.余额 ? " · 闪臣剩 <b>"+esc(s.余额)+"</b>" : "")+
     (d.上次补 ? "<br><span class=次>"+esc(d.上次补)+"</span>" : "");
+  填闪(s);
   const tb=document.getElementById("表");
   tb.innerHTML="";
   const 列=d.池||d.proxies||[];
@@ -147,16 +241,26 @@ function 填(d){
   });
   try{
     const f=document.getElementById("设");
-    if(f.mode) f.mode.value=d.mode||"round_robin";
-    if(f.sticky) f.sticky.value=d.sticky==="关"?"":(d.sticky||"");
-    if(f.pool_size) f.pool_size.value=d.pool_size;
-    if(f.fail_n) f.fail_n.value=d.fail_n;
-    if(f.check_interval) f.check_interval.value=d.check_interval;
-    if(f.check_conc) f.check_conc.value=d.check_conc||16;
-    if(f.fetch_url) f.fetch_url.value=d.fetch_url||"";
-    if(f.fetch_cmd) f.fetch_cmd.value=d.fetch_cmd||"";
-    if(f.auto_rotate) f.auto_rotate.value=d.auto_rotate||0;
-    if(f.fetch_scheme) f.fetch_scheme.value=d.fetch_scheme||"";
+    塞(f,"mode",d.mode||"round_robin");
+    塞(f,"sticky",d.sticky==="关"?"":(d.sticky||""));
+    塞(f,"pool_size",d.pool_size);
+    塞(f,"fail_n",d.fail_n);
+    塞(f,"check_interval",d.check_interval);
+    塞(f,"check_conc",d.check_conc||16);
+    塞(f,"fetch_url",d.fetch_url||"");
+    塞(f,"fetch_cmd",d.fetch_cmd||"");
+    塞(f,"auto_rotate",d.auto_rotate||0);
+    塞(f,"fetch_scheme",d.fetch_scheme||"");
+    const g=document.getElementById("闪");
+    塞(g,"sc_key",d.sc_key||"");
+    塞(g,"sc_count",d.sc_count||8);
+    塞(g,"sc_time",String(d.sc_time==null?0:d.sc_time));
+    塞(g,"sc_protocol",d.sc_protocol||"http");
+    塞(g,"sc_cntry",d.sc_cntry||"");
+    塞(g,"sc_state",d.sc_state||"");
+    塞(g,"sc_city",d.sc_city||"");
+    塞(g,"sc_white",String(d.sc_white==null?1:d.sc_white));
+    if(g.sc_code) g.sc_code.placeholder=s.有码?"已存，留空=不改":"必填，闪臣个人中心设置";
   }catch(e){ console.warn(e); }
 }
 async function 刷(){ 填(await api("/api/status")); }
@@ -172,6 +276,32 @@ document.getElementById("设").onsubmit=async e=>{
   });
   刷();
 };
+async function 忙(id, 话, 干){
+  const b=document.getElementById(id), 原=b.textContent;
+  b.disabled=true; b.textContent=话;
+  try{ await 干(); }
+  catch(e){ alert(e.message); }
+  finally{ b.disabled=false; b.textContent=原; 刷(); }
+}
+document.getElementById("闪").onsubmit=async e=>{
+  e.preventDefault();
+  const f=e.target;
+  await api("/api/set",{
+    sc_key:f.sc_key.value.trim(), sc_code:f.sc_code.value,
+    sc_count:+f.sc_count.value, sc_time:+f.sc_time.value,
+    sc_protocol:f.sc_protocol.value, sc_cntry:f.sc_cntry.value.trim(),
+    sc_state:f.sc_state.value.trim(), sc_city:f.sc_city.value.trim(),
+    sc_white:+f.sc_white.value
+  });
+  f.sc_code.value="";
+  await api("/api/sc/refresh",{});
+  刷();
+};
+document.getElementById("加白").onclick=()=>忙("加白","加白名单中…",async()=>{
+  const j=await api("/api/sc/white",{});
+  if(!j.好) alert(j.msg||"加白名单失败");
+});
+document.getElementById("刷闪").onclick=()=>忙("刷闪","刷新中…",()=>api("/api/sc/refresh",{}));
 document.getElementById("加").onsubmit=async e=>{
   e.preventDefault();
   const 文=e.target.串.value;
@@ -181,12 +311,7 @@ document.getElementById("加").onsubmit=async e=>{
   刷();
 };
 document.getElementById("补").onclick=async()=>{ await api("/api/fill",{}); 刷(); };
-document.getElementById("换").onclick=async()=>{
-  const b=document.getElementById("换"); b.disabled=true; b.textContent="换新中…";
-  try{ await api("/api/rotate",{}); }
-  catch(e){ alert(e.message); }
-  finally{ b.disabled=false; b.textContent="立即换新"; 刷(); }
-};
+document.getElementById("换").onclick=()=>忙("换","换新中…",()=>api("/api/rotate",{}));
 document.getElementById("清空").onclick=async()=>{
   if(!confirm("确定删除池里全部代理？")) return;
   await api("/api/clear",{});
@@ -505,6 +630,20 @@ async def 处理管理(读, 写, 池子: 池) -> None:
         elif 法 == "POST" and 路 == "/api/rotate":
             说 = await 池子.换新()
             _json(写, 200, {"ok": True, "msg": 说})
+        elif 法 == "POST" and 路 == "/api/sc/white":
+            好, 说 = await asyncio.to_thread(
+                池子.加白名单, str(数据.get("ip") or ""),
+                str(数据.get("备注") or 数据.get("remark") or "xui-bridge"),
+            )
+            _json(写, 200, {"ok": True, "好": 好, "msg": 说})
+        elif 法 == "POST" and 路 == "/api/sc/unwhite":
+            好, 说 = await asyncio.to_thread(
+                池子.删白名单, str(数据.get("id") or ""), str(数据.get("ip") or ""),
+            )
+            _json(写, 200, {"ok": True, "好": 好, "msg": 说})
+        elif 法 == "POST" and 路 == "/api/sc/refresh":
+            await asyncio.to_thread(池子.刷闪臣)
+            _json(写, 200, {"ok": True, "闪臣": 池子.闪臣快照()})
         else:
             _json(写, 404, {"ok": False, "err": "没有这个接口"})
         await 写.drain()

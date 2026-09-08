@@ -102,7 +102,7 @@ async function api(path, body){
   if(!r.ok || j.ok===false) throw new Error(j.err||t);
   return j;
 }
-function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function 填(d){
   const n=d.节点||{};
   const 空=!(d.总数);

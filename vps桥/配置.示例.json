@@ -14,6 +14,18 @@
   "connect_timeout": 8,
   "fetch_url": "",
   "fetch_cmd": "",
+  "fetch_scheme": "",
+  "auto_rotate": 0,
+  "sc_base": "https://global.shanchendaili.com",
+  "sc_key": "",
+  "sc_code": "",
+  "sc_count": 8,
+  "sc_time": 0,
+  "sc_protocol": "http",
+  "sc_cntry": "",
+  "sc_state": "",
+  "sc_city": "",
+  "sc_white": 1,
   "web_pass": "YPN940815...",
   "proxies": []
 }

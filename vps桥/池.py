@@ -10,11 +10,67 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from 解析 import 本机主机, 拆, 给上游, 规范协议
 
 日志 = logging.getLogger("xui桥")
+
+
+闪臣码 = {
+    1001: "鉴权失败，检查 API Key",
+    1002: "参数错误或校验失败",
+    1003: "账号不可用，已删除或被禁用",
+    1004: "本机公网 IP 不在动态白名单",
+    1005: "没有可用的动态流量账号，或流量已用完",
+    1006: "安全码不对",
+    1007: "白名单条数超上限，先删几条再加",
+    2001: "闪臣那边系统处理失败",
+}
+
+
+def 闪臣说(码: int, 话: str) -> str:
+    解 = 闪臣码.get(int(码 or 0), "")
+    话 = (话 or "").strip()
+    if 解 and 解 not in 话:
+        return f"{话}（{码}：{解}）" if 话 else f"{码}：{解}"
+    return 话 or f"错误码 {码}"
+
+
+def 解信封(文: str) -> tuple[int, str, Any] | None:
+    """闪臣统一返回 {code, message, data}；不是这个形状就返回 None。"""
+    串 = (文 or "").strip()
+    if not 串.startswith("{"):
+        return None
+    try:
+        包 = json.loads(串)
+    except ValueError:
+        return None
+    if not isinstance(包, dict) or "code" not in 包:
+        return None
+    try:
+        码 = int(包.get("code") or 0)
+    except (TypeError, ValueError):
+        码 = -1
+    return 码, str(包.get("message") or ""), 包.get("data")
+
+
+def 遮(密: str) -> str:
+    密 = str(密 or "")
+    if not 密:
+        return ""
+    return f"{密[:4]}****{密[-4:]}" if len(密) > 8 else "****"
+
+
+def _白条(一: Any) -> dict[str, str]:
+    if not isinstance(一, dict):
+        return {"id": "", "ip": str(一 or ""), "备注": ""}
+    return {
+        "id": str(一.get("id") or 一.get("ID") or ""),
+        "ip": str(一.get("ip") or 一.get("IP") or 一.get("address") or ""),
+        "备注": str(一.get("remark") or 一.get("note") or ""),
+    }
 
 
 def 人读(n: int) -> str:
@@ -45,6 +101,16 @@ def 人读(n: int) -> str:
     "fetch_cmd": "",
     "fetch_scheme": "",
     "auto_rotate": 0,
+    "sc_base": "https://global.shanchendaili.com",
+    "sc_key": "",
+    "sc_code": "",
+    "sc_count": 8,
+    "sc_time": 0,
+    "sc_protocol": "http",
+    "sc_cntry": "",
+    "sc_state": "",
+    "sc_city": "",
+    "sc_white": 1,
     "web_pass": "YPN940815...",
     "proxies": [],
 }
@@ -108,6 +174,11 @@ class 池:
         self.上次补 = ""
         self.设: dict[str, Any] = dict(默认)
         self.条们: list[条] = []
+        self.闪臣态: dict[str, Any] = {
+            "余额": "", "有套餐": False, "余额说": "",
+            "白名单": [], "白名单说": "",
+            "本机IP": "", "IP时间": 0.0, "刷时间": "",
+        }
         self.读盘()
 
     def 读盘(self) -> None:
@@ -148,6 +219,16 @@ class 池:
             "fetch_cmd": self.设["fetch_cmd"],
             "fetch_scheme": self.设.get("fetch_scheme") or "",
             "auto_rotate": int(self.设.get("auto_rotate") or 0),
+            "sc_base": self.设.get("sc_base") or 默认["sc_base"],
+            "sc_key": self.设.get("sc_key") or "",
+            "sc_code": self.设.get("sc_code") or "",
+            "sc_count": int(self.设.get("sc_count") or 1),
+            "sc_time": int(self.设.get("sc_time") or 0),
+            "sc_protocol": self.设.get("sc_protocol") or "http",
+            "sc_cntry": self.设.get("sc_cntry") or "",
+            "sc_state": self.设.get("sc_state") or "",
+            "sc_city": self.设.get("sc_city") or "",
+            "sc_white": int(self.设.get("sc_white") or 0),
             "web_pass": self.设["web_pass"],
             "proxies": [一.串() for 一 in self.条们],
         }
@@ -248,13 +329,17 @@ class 池:
 
     async def 改设(self, 补: dict[str, Any]) -> None:
         async with self.锁:
-            for k in ("mode", "sticky", "fetch_url", "fetch_cmd", "fetch_scheme"):
+            for k in ("mode", "sticky", "fetch_url", "fetch_cmd", "fetch_scheme",
+                      "sc_base", "sc_key", "sc_protocol", "sc_cntry", "sc_state", "sc_city"):
                 if k in 补 and 补[k] is not None:
-                    self.设[k] = 补[k]
+                    self.设[k] = str(补[k]).strip() if k.startswith("sc_") else 补[k]
             for k in ("pool_size", "fail_n", "check_interval", "check_conc",
-                      "connect_timeout", "auto_rotate"):
+                      "connect_timeout", "auto_rotate", "sc_count", "sc_time", "sc_white"):
                 if k in 补 and 补[k] not in (None, ""):
                     self.设[k] = int(补[k])
+            # 安全码是只写的：页面永远不回显，留空表示保持原样
+            if str(补.get("sc_code") or "").strip():
+                self.设["sc_code"] = str(补["sc_code"]).strip()
             self.落盘()
 
     def 健康们(self) -> list[条]:
@@ -321,32 +406,198 @@ class 池:
         if 要补:
             await self.补齐()
 
-    def 有拉取源(self) -> bool:
-        return bool(str(self.设.get("fetch_url") or "").strip()
-                    or str(self.设.get("fetch_cmd") or "").strip())
+    # ---- 闪臣动态流量接口 ------------------------------------------------
 
-    def 拉取一批(self) -> list[dict]:
-        """调一次提取接口，把返回的每一行都解析出来。阻塞，需放线程里跑。"""
-        址 = str(self.设.get("fetch_url") or "").strip()
-        令 = str(self.设.get("fetch_cmd") or "").strip()
-        文 = ""
+    def 闪臣开(self) -> bool:
+        return bool(str(self.设.get("sc_key") or "").strip())
+
+    def 可自动白(self) -> bool:
+        return (self.闪臣开() and bool(str(self.设.get("sc_code") or "").strip())
+                and bool(int(self.设.get("sc_white") or 0)))
+
+    def _闪臣址(self, 名: str, 参: dict[str, Any]) -> str:
+        底 = str(self.设.get("sc_base") or "").strip().rstrip("/") or 默认["sc_base"]
+        if not 底.startswith(("http://", "https://")):
+            底 = "https://" + 底
+        净 = {k: v for k, v in 参.items() if v not in (None, "")}
+        return f"{底}/flow-api/{名}?{urlencode(净)}"
+
+    def _闪臣调(self, 名: str, 参: dict[str, Any]) -> tuple[int, str, Any]:
+        """调一次接口并拆 {code,message,data} 信封，返回 (码, 人话, 数据)。阻塞。"""
+        try:
+            求 = Request(self._闪臣址(名, 参), headers={"User-Agent": "xui-bridge"})
+            with urlopen(求, timeout=20) as r:
+                文 = r.read().decode("utf-8", "replace")
+        except Exception as 错:
+            return -1, f"连不上闪臣：{错}", None
+        包 = 解信封(文)
+        if 包 is None:
+            return -1, f"闪臣返回看不懂：{(文 or '').strip()[:140]}", None
+        码, 话, 数 = 包
+        return 码, (话 or "ok") if 码 == 0 else 闪臣说(码, 话), 数
+
+    def 本机出口IP(self) -> str:
+        """问一下外面看到的是哪个 IP，白名单要加的就是它。缓存十分钟。"""
+        缓 = str(self.闪臣态.get("本机IP") or "")
+        if 缓 and time.time() - float(self.闪臣态.get("IP时间") or 0) < 600:
+            return 缓
+        for 址 in ("https://api.ipify.org", "https://ifconfig.me/ip", "https://ipinfo.io/ip"):
+            try:
+                求 = Request(址, headers={"User-Agent": "curl/8"})
+                with urlopen(求, timeout=8) as r:
+                    文 = r.read().decode("utf-8", "replace").strip()
+            except Exception:
+                continue
+            if 文 and len(文) <= 45 and all(c in "0123456789abcdefABCDEF.:" for c in 文):
+                self.闪臣态["本机IP"] = 文
+                self.闪臣态["IP时间"] = time.time()
+                return 文
+        return 缓
+
+    def 加白名单(self, ip: str = "", 备注: str = "xui-bridge") -> tuple[bool, str]:
+        """ip 留空就让闪臣按请求来源 IP 加，正好是本机出口。阻塞。"""
+        if not self.闪臣开():
+            return False, "没填 API Key"
+        安全码 = str(self.设.get("sc_code") or "").strip()
+        if not 安全码:
+            return False, "没填安全码，闪臣要求改白名单必须带安全码"
+        码, 说, _ = self._闪臣调("whitelist-add.html", {
+            "key": str(self.设.get("sc_key") or "").strip(),
+            "security_code": 安全码,
+            "ip": str(ip or "").strip(),
+            "remark": 备注,
+        })
+        好 = 码 == 0
+        self.闪臣态["白名单说"] = f"{time.strftime('%H:%M:%S')} {'已加入白名单' if 好 else 说}"
+        (日志.info if 好 else 日志.warning)("加白名单：%s", 说)
+        if 好:
+            self.查白名单()
+        return 好, 说
+
+    def 删白名单(self, 号: str = "", ip: str = "") -> tuple[bool, str]:
+        安全码 = str(self.设.get("sc_code") or "").strip()
+        if not self.闪臣开() or not 安全码:
+            return False, "要先填 API Key 和安全码"
+        if not str(号 or "").strip() and not str(ip or "").strip():
+            return False, "得给 id 或 ip"
+        码, 说, _ = self._闪臣调("whitelist-remove.html", {
+            "key": str(self.设.get("sc_key") or "").strip(),
+            "security_code": 安全码,
+            "id": str(号 or "").strip(),
+            "ip": str(ip or "").strip(),
+        })
+        好 = 码 == 0
+        self.闪臣态["白名单说"] = f"{time.strftime('%H:%M:%S')} {'已删除' if 好 else 说}"
+        if 好:
+            self.查白名单()
+        return 好, 说
+
+    def 查余额(self) -> tuple[bool, str]:
+        if not self.闪臣开():
+            return False, "没填 API Key"
+        码, 说, 数 = self._闪臣调("traffic-balance.html", {
+            "key": str(self.设.get("sc_key") or "").strip(),
+        })
+        if 码 != 0 or not isinstance(数, dict):
+            self.闪臣态["余额说"] = 说
+            return False, 说
+        文 = str(数.get("traffic_balance_text") or "").strip()
+        if not 文:
+            文 = f"{数.get('traffic_balance_gb') or 0} GB"
+        self.闪臣态["余额"] = 文
+        self.闪臣态["有套餐"] = bool(数.get("has_package"))
+        self.闪臣态["余额说"] = "" if 数.get("has_package") else "账号没有生效中的流量套餐"
+        return True, 文
+
+    def 查白名单(self) -> tuple[bool, list[dict]]:
+        if not self.闪臣开():
+            return False, []
+        码, 说, 数 = self._闪臣调("whitelist.html", {
+            "key": str(self.设.get("sc_key") or "").strip(),
+        })
+        if 码 != 0:
+            self.闪臣态["白名单说"] = 说
+            return False, []
+        原 = 数.get("whitelist") if isinstance(数, dict) else 数
+        列 = [_白条(一) for 一 in (原 or []) if 一]
+        self.闪臣态["白名单"] = 列
+        return True, 列
+
+    def 刷闪臣(self) -> None:
+        """余额、白名单、本机出口 IP 一次刷全。阻塞，需放线程里跑。"""
+        if not self.闪臣开():
+            return
+        self.闪臣态["本机IP"] = self.本机出口IP()
+        self.查余额()
+        self.查白名单()
+        self.闪臣态["刷时间"] = time.strftime("%H:%M:%S")
+
+    def 提取地址(self) -> str:
+        """填了闪臣 Key 就按参数自动拼提取地址，否则用手填的 fetch_url。"""
+        if not self.闪臣开():
+            return str(self.设.get("fetch_url") or "").strip()
+        return self._闪臣址("get-ip.html", {
+            "key": str(self.设.get("sc_key") or "").strip(),
+            "count": max(1, min(500, int(self.设.get("sc_count") or 1))),
+            "time": int(self.设.get("sc_time") or 0),
+            "protocol": str(self.设.get("sc_protocol") or "http"),
+            # 桥是按行读的，只认 user:pass@host:port 且以 \n 分隔
+            "type": "text",
+            "pattern": 1,
+            "textSep": 3,
+            "cntry": str(self.设.get("sc_cntry") or "").strip(),
+            "state": str(self.设.get("sc_state") or "").strip(),
+            "city": str(self.设.get("sc_city") or "").strip(),
+        })
+
+    def 提取地址显(self) -> str:
+        址, 键 = self.提取地址(), str(self.设.get("sc_key") or "").strip()
+        return 址.replace(键, 遮(键)) if 键 and 键 in 址 else 址
+
+    def 拉取方案(self) -> str:
+        """闪臣接口的三种文本格式都不带协议，只能按套餐参数定。"""
+        if self.闪臣开():
+            s5 = str(self.设.get("sc_protocol") or "http").lower() in ("s5", "socks5")
+            return "socks5" if s5 else "http"
+        return 规范协议(self.设.get("fetch_scheme")) if self.设.get("fetch_scheme") else ""
+
+    def 闪臣快照(self) -> dict[str, Any]:
+        本机 = str(self.闪臣态.get("本机IP") or "")
+        白 = list(self.闪臣态.get("白名单") or [])
+        return {
+            "开": self.闪臣开(),
+            "有码": bool(str(self.设.get("sc_code") or "").strip()),
+            "余额": self.闪臣态.get("余额") or "",
+            "有套餐": bool(self.闪臣态.get("有套餐")),
+            "余额说": self.闪臣态.get("余额说") or "",
+            "白名单": 白,
+            "白名单说": self.闪臣态.get("白名单说") or "",
+            "本机IP": 本机,
+            "已加白": bool(本机) and any(一.get("ip") == 本机 for 一 in 白),
+            "刷时间": self.闪臣态.get("刷时间") or "",
+            "提取地址": self.提取地址显(),
+        }
+
+    # ---- 提取与补池 ------------------------------------------------------
+
+    def 有拉取源(self) -> bool:
+        return bool(self.提取地址() or str(self.设.get("fetch_cmd") or "").strip())
+
+    def _取文(self, 址: str, 令: str) -> tuple[str, str]:
+        """按地址或命令取一次原始文本，返回 (正文, 出错说明)。"""
         try:
             if 址:
                 求 = Request(址, headers={"User-Agent": "xui-bridge"})
                 with urlopen(求, timeout=20) as r:
-                    文 = r.read().decode("utf-8", "replace")
-            elif 令:
-                import subprocess
-                文 = subprocess.check_output(
-                    令, shell=True, timeout=30, stderr=subprocess.STDOUT,
-                ).decode("utf-8", "replace")
-            else:
-                return []
+                    return r.read().decode("utf-8", "replace"), ""
+            import subprocess
+            出 = subprocess.check_output(令, shell=True, timeout=30, stderr=subprocess.STDOUT)
+            return 出.decode("utf-8", "replace"), ""
         except Exception as 错:
-            self.上次补 = f"拉取失败 {time.strftime('%H:%M:%S')} {错}"
-            日志.warning("%s", self.上次补)
-            return []
-        指定 = 规范协议(self.设.get("fetch_scheme")) if self.设.get("fetch_scheme") else ""
+            return "", str(错)
+
+    def _解代理行(self, 文: str) -> list[dict]:
+        指定 = self.拉取方案()
         出 = []
         for 行 in (文 or "").replace("\r", "\n").split("\n"):
             行 = 行.strip()
@@ -359,6 +610,31 @@ class 池:
             if 指定:
                 信["方案"] = 指定
             出.append(信)
+        return 出
+
+    def 拉取一批(self) -> list[dict]:
+        """调一次提取接口，把返回的每一行都解析出来。阻塞，需放线程里跑。"""
+        址, 令 = self.提取地址(), str(self.设.get("fetch_cmd") or "").strip()
+        if not 址 and not 令:
+            return []
+        文, 错文 = self._取文(址, 令)
+        包 = 解信封(文) if not 错文 else None
+        if 包 and 包[0] == 1004 and 址 and self.可自动白():
+            好, 白说 = self.加白名单()
+            日志.info("提取撞上 1004，自动加白名单：%s", 白说)
+            if 好:
+                time.sleep(2)
+                文, 错文 = self._取文(址, "")
+                包 = 解信封(文) if not 错文 else None
+        if 错文:
+            self.上次补 = f"拉取失败 {time.strftime('%H:%M:%S')} {错文}"
+            日志.warning("%s", self.上次补)
+            return []
+        if 包 and 包[0] != 0:
+            self.上次补 = f"接口拒绝 {time.strftime('%H:%M:%S')} {闪臣说(包[0], 包[1])}"
+            日志.warning("%s", self.上次补)
+            return []
+        出 = self._解代理行(文)
         if not 出:
             self.上次补 = (f"拉取无有效行 {time.strftime('%H:%M:%S')}，"
                           f"接口返回：{(文 or '').strip()[:140]}")
@@ -376,7 +652,7 @@ class 池:
         if 目标 <= 0 or 健康数 >= 目标:
             return "池已够，不补"
         if not self.有拉取源():
-            说 = "健康不足但未配置 fetch_url / fetch_cmd，保持现有池"
+            说 = "健康不足但没配提取来源（闪臣 Key 或 fetch_url / fetch_cmd），保持现有池"
             self.上次补 = 说
             return 说
         要 = 目标 - 健康数
@@ -436,6 +712,16 @@ class 池:
             "fetch_cmd": self.设["fetch_cmd"],
             "fetch_scheme": self.设.get("fetch_scheme") or "",
             "auto_rotate": int(self.设.get("auto_rotate") or 0),
+            "sc_base": self.设.get("sc_base") or 默认["sc_base"],
+            "sc_key": self.设.get("sc_key") or "",
+            "sc_count": int(self.设.get("sc_count") or 1),
+            "sc_time": int(self.设.get("sc_time") or 0),
+            "sc_protocol": self.设.get("sc_protocol") or "http",
+            "sc_cntry": self.设.get("sc_cntry") or "",
+            "sc_state": self.设.get("sc_state") or "",
+            "sc_city": self.设.get("sc_city") or "",
+            "sc_white": int(self.设.get("sc_white") or 0),
+            "闪臣": self.闪臣快照(),
             "上次补": self.上次补,
             "健康": len(self.健康们()),
             "总数": len(self.条们),
