@@ -179,6 +179,10 @@ class 池:
             "白名单": [], "白名单说": "",
             "本机IP": "", "IP时间": 0.0, "刷时间": "",
         }
+        # 累计流量跟着桥走，换新丢代理、重启都不清零
+        self.总上行 = 0
+        self.总下行 = 0
+        self.起算 = time.strftime("%Y-%m-%d %H:%M")
         self.读盘()
 
     def 读盘(self) -> None:
@@ -193,8 +197,12 @@ class 池:
         self.设 = {**默认, **{k: 原.get(k, 默认[k]) for k in 默认}}
         self.条们 = []
         for 一 in 原.get("proxies") or []:
+            # 新格式 {"串":..., "来源":...}；老格式和 install.sh 追加的是纯字符串
+            源 = "手加"
+            if isinstance(一, dict) and 一.get("串"):
+                源, 一 = str(一.get("来源") or "手加"), 一["串"]
             try:
-                self._塞(一, 落盘=False)
+                self._塞(一, 来源=源, 落盘=False)
             except ValueError as 错:
                 日志.warning("跳过非法代理：%s", 错)
         self._复流量()
@@ -230,7 +238,8 @@ class 池:
             "sc_city": self.设.get("sc_city") or "",
             "sc_white": int(self.设.get("sc_white") or 0),
             "web_pass": self.设["web_pass"],
-            "proxies": [一.串() for 一 in self.条们],
+            # 来源必须一起存，否则重启后拉取来的全变成手加，换新再也换不掉它们
+            "proxies": [{"串": 一.串(), "来源": 一.来源} for 一 in self.条们],
         }
         临时 = self.径.with_suffix(self.径.suffix + ".tmp")
         临时.write_text(json.dumps(出, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -248,16 +257,24 @@ class 池:
             文 = json.loads(p.read_text(encoding="utf-8"))
         except Exception:
             return
-        旧: dict[str, dict] = {}
-        for 一 in 文.get("池") or []:
-            if isinstance(一, dict) and 一.get("地址"):
-                旧[str(一["地址"])] = 一
+        条们 = [一 for 一 in (文.get("池") or []) if isinstance(一, dict)]
+        # 按「协议|主机|端口|用户」对，不能按地址——闪臣整池同一个入口，
+        # 按地址会让每条都认领同一份历史，总量被放大十几倍
+        旧 = {str(一["键"]): 一 for 一 in 条们 if 一.get("键")}
         for 一 in self.条们:
-            命 = 旧.get(一.脱敏())
+            命 = 旧.get(一.键())
             if not 命:
                 continue
             一.上行 = int(命.get("上行") or 0)
             一.下行 = int(命.get("下行") or 0)
+        self.起算 = str(文.get("起算") or self.起算)
+        if "总上行" in 文 or "总下行" in 文:
+            self.总上行 = int(文.get("总上行") or 0)
+            self.总下行 = int(文.get("总下行") or 0)
+        else:
+            # 旧状态文件没有累计项，用各条之和垫上，别让已有的量凭空消失
+            self.总上行 = sum(int(一.get("上行") or 0) for 一 in 条们)
+            self.总下行 = sum(int(一.get("下行") or 0) for 一 in 条们)
 
     def 写状态(self) -> None:
         出 = {
@@ -265,7 +282,11 @@ class 池:
             "上次补": self.上次补,
             "模式": self.设["mode"],
             "粘住": self.设["sticky"],
-            "池": [一.快照() for 一 in self.条们],
+            "起算": self.起算,
+            "总上行": self.总上行,
+            "总下行": self.总下行,
+            # 键只落盘不上接口，页面看到的还是脱敏地址
+            "池": [{**一.快照(), "键": 一.键()} for 一 in self.条们],
         }
         try:
             self.状态径().write_text(json.dumps(出, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -380,9 +401,21 @@ class 池:
         self.写状态()
 
     async def 记流量(self, 一: 条, 上行: int = 0, 下行: int = 0) -> None:
+        上, 下 = max(0, int(上行 or 0)), max(0, int(下行 or 0))
         async with self.锁:
-            一.上行 += max(0, int(上行 or 0))
-            一.下行 += max(0, int(下行 or 0))
+            一.上行 += 上
+            一.下行 += 下
+            self.总上行 += 上
+            self.总下行 += 下
+
+    async def 清流量(self) -> str:
+        async with self.锁:
+            self.总上行 = self.总下行 = 0
+            self.起算 = time.strftime("%Y-%m-%d %H:%M")
+            for 一 in self.条们:
+                一.上行 = 一.下行 = 0
+            self.写状态()
+        return f"流量计数已清零，从 {self.起算} 重新算"
 
     async def 报成(self, 一: 条) -> None:
         async with self.锁:
@@ -754,5 +787,8 @@ class 池:
             "下行": sum(一.下行 for 一 in self.条们),
             "上行文": 人读(sum(一.上行 for 一 in self.条们)),
             "下行文": 人读(sum(一.下行 for 一 in self.条们)),
+            "总上行文": 人读(self.总上行),
+            "总下行文": 人读(self.总下行),
+            "起算": self.起算,
             "池": [一.快照() for 一 in self.条们],
         }

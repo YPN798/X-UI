@@ -147,7 +147,9 @@ code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px;word-br
     <label>手动加代理（socks5://用户:密码@主机:端口 或 IP|端口|用户|密码，可多行）
       <textarea name="串" placeholder="socks5://user:pass@1.2.3.4:1080"></textarea>
     </label>
-    <p><button type="submit" id="手加">加入池</button> <button type="button" class="红" id="清空">一键删除全部</button></p>
+    <p><button type="submit" id="手加">加入池</button>
+       <button type="button" class="红" id="清空">一键删除全部</button>
+       <button type="button" class="灰" id="清量">流量计数清零</button></p>
   </form>
 </details>
 </main>
@@ -234,8 +236,10 @@ function 填(d){
   const s=d.闪臣||{};
   let h="<div>SOCKS <b>"+esc(d.listen)+"</b> · 管理 <b>"+esc(d.web)+"</b> · 验活 <b>"+
         esc(d.check_host||"www.dola.com")+":"+(d.check_port||443)+"</b></div>"+
-        "<div>代理池 <b>"+(d.健康||0)+"</b> 条健康 / 共 "+(d.总数||0)+" 条 · 上行 "+
-        esc(d.上行文||"0 B")+" · 下行 "+esc(d.下行文||"0 B")+"</div>";
+        "<div>代理池 <b>"+(d.健康||0)+"</b> 条健康 / 共 "+(d.总数||0)+" 条 · 这批代理 上行 "+
+        esc(d.上行文||"0 B")+"、下行 "+esc(d.下行文||"0 B")+"</div>"+
+        "<div>累计 上行 <b>"+esc(d.总上行文||"0 B")+"</b>、下行 <b>"+esc(d.总下行文||"0 B")+
+        "</b><span class=次>（自 "+esc(d.起算||"")+" 起算，换新和重启都不清零）</span></div>";
   if(s.开){
     h+="<div>闪臣 Key <span class=好>已保存</span> · 安全码 "+
        (s.有码?"<span class=好>已保存</span>":"<span class=坏>没保存</span>")+
@@ -352,6 +356,10 @@ document.getElementById("加").onsubmit=e=>{
 document.getElementById("清空").onclick=()=>{
   if(!confirm("确定删除池里全部代理？")) return;
   return 忙("清空","删除中…",async()=>"删了 "+(await api("/api/clear",{})).n+" 条");
+};
+document.getElementById("清量").onclick=()=>{
+  if(!confirm("累计流量从现在重新算？")) return;
+  return 忙("清量","清零中…",async()=>(await api("/api/traffic/reset",{})).msg);
 };
 document.getElementById("退").onclick=async()=>{ await api("/api/logout",{}); location.href="/"; };
 刷(); setInterval(刷, 4000);
@@ -666,6 +674,8 @@ async def 处理管理(读, 写, 池子: 池) -> None:
         elif 法 == "POST" and 路 == "/api/rotate":
             说 = await 池子.换新()
             _json(写, 200, {"ok": True, "msg": 说})
+        elif 法 == "POST" and 路 == "/api/traffic/reset":
+            _json(写, 200, {"ok": True, "msg": await 池子.清流量()})
         elif 法 == "POST" and 路 == "/api/sc/setup":
             步 = await 池子.一键开跑(str(数据.get("key") or "").strip(),
                                      str(数据.get("code") or "").strip())
