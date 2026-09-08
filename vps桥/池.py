@@ -88,11 +88,11 @@ def 人读(n: int) -> str:
     "port": 41000,
     "web": "0.0.0.0",
     "web_port": 41001,
-    "pool_size": 8,
+    "pool_size": 30,
     "mode": "round_robin",
     "sticky": "",
     "fail_n": 3,
-    "check_interval": 30,
+    "check_interval": 120,
     "check_conc": 16,
     "check_host": "www.dola.com",
     "check_port": 443,
@@ -100,17 +100,18 @@ def 人读(n: int) -> str:
     "fetch_url": "",
     "fetch_cmd": "",
     "fetch_scheme": "",
-    "auto_rotate": 0,
+    "auto_rotate": 300,
     "sc_base": "https://global.shanchendaili.com",
     "sc_key": "",
     "sc_code": "",
-    "sc_count": 8,
+    "sc_count": 30,
     "sc_time": 0,
     "sc_protocol": "http",
-    "sc_cntry": "",
-    "sc_state": "",
-    "sc_city": "",
+    "sc_cntry": "US",
+    "sc_state": "California",
+    "sc_city": "Losangeles",
     "sc_white": 1,
+    "defaults_ver": 2,
     "web_pass": "YPN940815...",
     "proxies": [],
 }
@@ -187,14 +188,28 @@ class 池:
 
     def 读盘(self) -> None:
         原 = dict(默认)
+        盘: dict[str, Any] = {}
         if self.径.is_file():
             try:
                 文 = json.loads(self.径.read_text(encoding="utf-8"))
                 if isinstance(文, dict):
-                    原.update(文)
+                    盘, 原 = 文, {**原, **文}
             except Exception as 错:
                 日志.warning("读配置失败 %s：%s", self.径, 错)
         self.设 = {**默认, **{k: 原.get(k, 默认[k]) for k in 默认}}
+        # 只看磁盘上写没写 defaults_ver，不能看合并后的 原——默认值会把缺项填成新版
+        try:
+            旧版 = int(盘["defaults_ver"]) if "defaults_ver" in 盘 else 0
+        except (TypeError, ValueError):
+            旧版 = 0
+        if not 盘:
+            旧版 = int(默认["defaults_ver"])
+        要升 = 旧版 < int(默认["defaults_ver"])
+        if 要升:
+            for k in ("pool_size", "check_interval", "check_conc", "auto_rotate",
+                      "sc_count", "sc_time", "sc_protocol", "sc_cntry", "sc_state",
+                      "sc_city", "sc_white", "defaults_ver"):
+                self.设[k] = 默认[k]
         self.条们 = []
         for 一 in 原.get("proxies") or []:
             # 新格式 {"串":..., "来源":...}；老格式和 install.sh 追加的是纯字符串
@@ -206,6 +221,12 @@ class 池:
             except ValueError as 错:
                 日志.warning("跳过非法代理：%s", 错)
         self._复流量()
+        if 要升:
+            日志.info("配置已升到默认 v%s：每批 %s 条，地区 %s/%s/%s，验活 %s 秒，换新 %s 秒",
+                      self.设["defaults_ver"], self.设["sc_count"],
+                      self.设["sc_cntry"], self.设["sc_state"], self.设["sc_city"],
+                      self.设["check_interval"], self.设["auto_rotate"])
+            self.落盘()
 
     def 落盘(self) -> None:
         self.径.parent.mkdir(parents=True, exist_ok=True)
@@ -237,6 +258,7 @@ class 池:
             "sc_state": self.设.get("sc_state") or "",
             "sc_city": self.设.get("sc_city") or "",
             "sc_white": int(self.设.get("sc_white") or 0),
+            "defaults_ver": int(self.设.get("defaults_ver") or 默认["defaults_ver"]),
             "web_pass": self.设["web_pass"],
             # 来源必须一起存，否则重启后拉取来的全变成手加，换新再也换不掉它们
             "proxies": [{"串": 一.串(), "来源": 一.来源} for 一 in self.条们],
@@ -567,11 +589,16 @@ class 池:
 
     async def 一键开跑(self, 键: str, 码: str) -> list[str]:
         """面板上就这一个按钮：存参数、加白名单、提一批、开定时换新。"""
-        补: dict[str, Any] = {"sc_key": 键, "sc_white": 1}
+        补: dict[str, Any] = {
+            "sc_key": 键, "sc_white": 1,
+            "sc_count": int(默认["sc_count"]), "pool_size": int(默认["pool_size"]),
+            "sc_time": int(默认["sc_time"]), "sc_protocol": 默认["sc_protocol"],
+            "sc_cntry": 默认["sc_cntry"], "sc_state": 默认["sc_state"],
+            "sc_city": 默认["sc_city"], "auto_rotate": int(默认["auto_rotate"]),
+            "check_interval": int(默认["check_interval"]),
+        }
         if 码:
             补["sc_code"] = 码
-        if not int(self.设.get("auto_rotate") or 0):
-            补["auto_rotate"] = 300
         await self.改设(补)
         if not self.闪臣开():
             return ["API Key 是空的，闪臣没启用。池子会保持现状。"]
@@ -634,6 +661,11 @@ class 池:
             "已加白": bool(本机) and any(一.get("ip") == 本机 for 一 in 白),
             "刷时间": self.闪臣态.get("刷时间") or "",
             "提取地址": self.提取地址显(),
+            "地区": "/".join(x for x in (
+                str(self.设.get("sc_cntry") or "").strip(),
+                str(self.设.get("sc_state") or "").strip(),
+                str(self.设.get("sc_city") or "").strip(),
+            ) if x) or "随机",
         }
 
     # ---- 提取与补池 ------------------------------------------------------

@@ -103,9 +103,9 @@ code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px;word-br
         <option value="s5">socks5</option>
       </select>
     </label>
-    <label>国家 <input name="sc_cntry" placeholder="留空随机，如 JP" style="min-width:110px"></label>
-    <label>州/省 <input name="sc_state" placeholder="如 Aomori" style="min-width:110px"></label>
-    <label>城市 <input name="sc_city" placeholder="如 Aomori" style="min-width:110px"></label>
+    <label>国家 <input name="sc_cntry" placeholder="US" style="min-width:110px"></label>
+    <label>州/省 <input name="sc_state" placeholder="California" style="min-width:110px"></label>
+    <label>城市 <input name="sc_city" placeholder="Losangeles" style="min-width:110px"></label>
     <label>撞白名单自动加
       <select name="sc_white"><option value="1">开</option><option value="0">关</option></select>
     </label>
@@ -121,7 +121,7 @@ code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px;word-br
         <option value="host">按目标主机</option>
       </select>
     </label>
-    <label>池目标条数 <input name="pool_size" type="number" min="0" max="64"></label>
+    <label>池目标条数 <input name="pool_size" type="number" min="0" max="500"></label>
     <label>失败几次摘除 <input name="fail_n" type="number" min="1" max="20"></label>
     <label>验活间隔秒 <input name="check_interval" type="number" min="8" max="600"></label>
     <label>同时验活条数 <input name="check_conc" type="number" min="1" max="64"></label>
@@ -243,8 +243,10 @@ function 填(d){
   if(s.开){
     h+="<div>闪臣 Key <span class=好>已保存</span> · 安全码 "+
        (s.有码?"<span class=好>已保存</span>":"<span class=坏>没保存</span>")+
-       " · 剩余 <b>"+esc(s.余额||"查询中…")+"</b> · 自动换新 "+
-       (d.auto_rotate?("每 <b>"+d.auto_rotate+"</b> 秒"):"<span class=坏>没开</span>")+"</div>";
+       " · 剩余 <b>"+esc(s.余额||"查询中…")+"</b> · 地区 <b>"+esc(s.地区||"随机")+"</b>"+
+       " · 每批 <b>"+(d.sc_count||30)+"</b> 条 · 自动换新 "+
+       (d.auto_rotate?("每 <b>"+d.auto_rotate+"</b> 秒"):"<span class=坏>没开</span>")+
+       " · 验活每 <b>"+(d.check_interval||120)+"</b> 秒</div>";
   }else{
     h+="<div class=坏>闪臣还没启用：上面填 API Key 和安全码，点「保存并自动开跑」。</div>";
   }
@@ -282,7 +284,7 @@ function 填(d){
     塞(f,"fetch_cmd",d.fetch_cmd||"");
     塞(f,"auto_rotate",d.auto_rotate||0);
     塞(f,"fetch_scheme",d.fetch_scheme||"");
-    塞(f,"sc_count",d.sc_count||8);
+    塞(f,"sc_count",d.sc_count||30);
     塞(f,"sc_time",String(d.sc_time==null?0:d.sc_time));
     塞(f,"sc_protocol",d.sc_protocol||"http");
     塞(f,"sc_cntry",d.sc_cntry||"");

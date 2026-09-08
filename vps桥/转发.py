@@ -294,7 +294,7 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
         except Exception as 错:
             日志.warning("开机加白名单失败：%s", 错)
     while not 停.is_set():
-        间隔 = max(8, int(池子.设.get("check_interval") or 30))
+        间隔 = max(8, int(池子.设.get("check_interval") or 120))
         秒 = float(池子.设.get("connect_timeout") or 8)
         并发 = max(1, min(64, int(池子.设.get("check_conc") or 16)))
         验主 = str(池子.设.get("check_host") or "www.dola.com").strip() or "www.dola.com"
