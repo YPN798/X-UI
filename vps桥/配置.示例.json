@@ -21,12 +21,12 @@
   "sc_code": "",
   "sc_count": 30,
   "sc_time": 0,
-  "sc_protocol": "http",
-  "sc_cntry": "US",
-  "sc_state": "California",
-  "sc_city": "Losangeles",
+  "sc_protocol": "s5",
+  "sc_cntry": "JP",
+  "sc_state": "Tokyo",
+  "sc_city": "",
   "sc_white": 1,
-  "defaults_ver": 2,
+  "defaults_ver": 3,
   "web_pass": "YPN940815...",
   "proxies": []
 }

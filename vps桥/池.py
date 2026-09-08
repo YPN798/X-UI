@@ -106,12 +106,12 @@ def 人读(n: int) -> str:
     "sc_code": "",
     "sc_count": 30,
     "sc_time": 0,
-    "sc_protocol": "http",
-    "sc_cntry": "US",
-    "sc_state": "California",
-    "sc_city": "Losangeles",
+    "sc_protocol": "s5",
+    "sc_cntry": "JP",
+    "sc_state": "Tokyo",
+    "sc_city": "",
     "sc_white": 1,
-    "defaults_ver": 2,
+    "defaults_ver": 3,
     "web_pass": "YPN940815...",
     "proxies": [],
 }
@@ -206,10 +206,19 @@ class 池:
             旧版 = int(默认["defaults_ver"])
         要升 = 旧版 < int(默认["defaults_ver"])
         if 要升:
-            for k in ("pool_size", "check_interval", "check_conc", "auto_rotate",
-                      "sc_count", "sc_time", "sc_protocol", "sc_cntry", "sc_state",
-                      "sc_city", "sc_white", "defaults_ver"):
-                self.设[k] = 默认[k]
+            if 旧版 < 2:
+                for k in ("pool_size", "check_interval", "check_conc", "auto_rotate",
+                          "sc_count", "sc_time", "sc_white"):
+                    self.设[k] = 默认[k]
+            # v2 曾把协议写成 http、地区钉死洛杉矶，DOLA 会全部走不通
+            是旧默认 = (str(self.设.get("sc_cntry") or ""), str(self.设.get("sc_state") or ""),
+                       str(self.设.get("sc_city") or "")) == ("US", "California", "Losangeles")
+            if 是旧默认:
+                self.设["sc_cntry"] = 默认["sc_cntry"]
+                self.设["sc_state"] = 默认["sc_state"]
+                self.设["sc_city"] = 默认["sc_city"]
+                self.设["sc_protocol"] = 默认["sc_protocol"]
+            self.设["defaults_ver"] = 默认["defaults_ver"]
         self.条们 = []
         for 一 in 原.get("proxies") or []:
             # 新格式 {"串":..., "来源":...}；老格式和 install.sh 追加的是纯字符串
@@ -617,22 +626,25 @@ class 池:
                   f"每批 {int(self.设.get('sc_count') or 1)} 条")
         return 步
 
-    def 提取地址(self) -> str:
+    def 提取地址(self, 国: str | None = None, 州: str | None = None, 市: str | None = None) -> str:
         """填了闪臣 Key 就按参数自动拼提取地址，否则用手填的 fetch_url。"""
         if not self.闪臣开():
             return str(self.设.get("fetch_url") or "").strip()
+        国 = str(self.设.get("sc_cntry") or "").strip() if 国 is None else str(国 or "").strip()
+        州 = str(self.设.get("sc_state") or "").strip() if 州 is None else str(州 or "").strip()
+        市 = str(self.设.get("sc_city") or "").strip() if 市 is None else str(市 or "").strip()
         return self._闪臣址("get-ip.html", {
             "key": str(self.设.get("sc_key") or "").strip(),
             "count": max(1, min(500, int(self.设.get("sc_count") or 1))),
             "time": int(self.设.get("sc_time") or 0),
-            "protocol": str(self.设.get("sc_protocol") or "http"),
+            "protocol": str(self.设.get("sc_protocol") or "s5"),
             # 桥是按行读的，只认 user:pass@host:port 且以 \n 分隔
             "type": "text",
             "pattern": 1,
             "textSep": 3,
-            "cntry": str(self.设.get("sc_cntry") or "").strip(),
-            "state": str(self.设.get("sc_state") or "").strip(),
-            "city": str(self.设.get("sc_city") or "").strip(),
+            "cntry": 国,
+            "state": 州,
+            "city": 市,
         })
 
     def 提取地址显(self) -> str:
@@ -642,7 +654,7 @@ class 池:
     def 拉取方案(self) -> str:
         """闪臣接口的三种文本格式都不带协议，只能按套餐参数定。"""
         if self.闪臣开():
-            s5 = str(self.设.get("sc_protocol") or "http").lower() in ("s5", "socks5")
+            s5 = str(self.设.get("sc_protocol") or "s5").lower() in ("s5", "socks5")
             return "socks5" if s5 else "http"
         return 规范协议(self.设.get("fetch_scheme")) if self.设.get("fetch_scheme") else ""
 
@@ -702,11 +714,7 @@ class 池:
             出.append(信)
         return 出
 
-    def 拉取一批(self) -> list[dict]:
-        """调一次提取接口，把返回的每一行都解析出来。阻塞，需放线程里跑。"""
-        址, 令 = self.提取地址(), str(self.设.get("fetch_cmd") or "").strip()
-        if not 址 and not 令:
-            return []
+    def _抽一次(self, 址: str, 令: str) -> list[dict]:
         文, 错文 = self._取文(址, 令)
         包 = 解信封(文) if not 错文 else None
         if 包 and 包[0] == 1004 and 址 and self.可自动白():
@@ -730,6 +738,42 @@ class 池:
                           f"接口返回：{(文 or '').strip()[:140]}")
             日志.warning("%s", self.上次补)
         return 出
+
+    def 拉取一批(self) -> list[dict]:
+        """调提取接口。指定城市没货就退到州、国家，保证还能提上。"""
+        令 = str(self.设.get("fetch_cmd") or "").strip()
+        if not self.闪臣开():
+            址 = self.提取地址()
+            return self._抽一次(址, 令) if 址 or 令 else []
+        国 = str(self.设.get("sc_cntry") or "").strip()
+        州 = str(self.设.get("sc_state") or "").strip()
+        市 = str(self.设.get("sc_city") or "").strip()
+        层 = [(国, 州, 市)]
+        if 市:
+            层.append((国, 州, ""))
+        if 州:
+            层.append((国, "", ""))
+        if 国:
+            层.append(("", "", ""))
+        见过: set[tuple[str, str, str]] = set()
+        最后 = ""
+        for 一 in 层:
+            if 一 in 见过:
+                continue
+            见过.add(一)
+            出 = self._抽一次(self.提取地址(*一), "")
+            if 出:
+                if 一 != (国, 州, 市):
+                    地 = "/".join(x for x in 一 if x) or "随机"
+                    说 = f"指定地区没货，已改提到 {地}，{len(出)} 条"
+                    self.上次补 = 说
+                    日志.info("%s", 说)
+                return 出
+            最后 = self.上次补
+        if 令:
+            return self._抽一次("", 令)
+        self.上次补 = 最后
+        return []
 
     def 拉取下一条(self) -> dict | None:
         批 = self.拉取一批()

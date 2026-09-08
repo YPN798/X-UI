@@ -103,9 +103,9 @@ code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px;word-br
         <option value="s5">socks5</option>
       </select>
     </label>
-    <label>国家 <input name="sc_cntry" placeholder="US" style="min-width:110px"></label>
-    <label>州/省 <input name="sc_state" placeholder="California" style="min-width:110px"></label>
-    <label>城市 <input name="sc_city" placeholder="Losangeles" style="min-width:110px"></label>
+    <label>国家 <input name="sc_cntry" placeholder="JP" style="min-width:110px"></label>
+    <label>州/省 <input name="sc_state" placeholder="Tokyo" style="min-width:110px"></label>
+    <label>城市 <input name="sc_city" placeholder="留空=整个东京" style="min-width:110px"></label>
     <label>撞白名单自动加
       <select name="sc_white"><option value="1">开</option><option value="0">关</option></select>
     </label>
@@ -286,7 +286,7 @@ function 填(d){
     塞(f,"fetch_scheme",d.fetch_scheme||"");
     塞(f,"sc_count",d.sc_count||30);
     塞(f,"sc_time",String(d.sc_time==null?0:d.sc_time));
-    塞(f,"sc_protocol",d.sc_protocol||"http");
+    塞(f,"sc_protocol",d.sc_protocol||"s5");
     塞(f,"sc_cntry",d.sc_cntry||"");
     塞(f,"sc_state",d.sc_state||"");
     塞(f,"sc_city",d.sc_city||"");

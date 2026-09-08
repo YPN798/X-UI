@@ -2962,9 +2962,9 @@ open(p, "w", encoding="utf-8").write(json.dumps({
     "pool_size": 30, "mode": "round_robin", "sticky": "",
     "fail_n": 3, "check_interval": 120, "connect_timeout": 8,
     "fetch_url": "", "fetch_cmd": "", "auto_rotate": 300,
-    "sc_count": 30, "sc_time": 0, "sc_protocol": "http",
-    "sc_cntry": "US", "sc_state": "California", "sc_city": "Losangeles",
-    "sc_white": 1, "defaults_ver": 2,
+    "sc_count": 30, "sc_time": 0, "sc_protocol": "s5",
+    "sc_cntry": "JP", "sc_state": "Tokyo", "sc_city": "",
+    "sc_white": 1, "defaults_ver": 3,
     "web_pass": "YPN940815...",
     "proxies": [px] if px else [],
 }, ensure_ascii=False, indent=2) + "\n")

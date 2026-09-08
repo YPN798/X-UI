@@ -67,24 +67,41 @@ async def _连(主机: str, 端口: int, 秒: float):
     )
 
 
+async def _按方案握(读, 写, 一: 条, 方案: str, 目标主: str, 目标口: int) -> None:
+    if 方案 == "socks5":
+        await _socks5握手(读, 写, 一, 目标主, 目标口)
+    elif 方案 == "socks4":
+        await _socks4握手(读, 写, 一, 目标主, 目标口)
+    else:
+        await _http握手(读, 写, 一, 目标主, 目标口)
+
+
 async def 经上游连(一: 条, 目标主: str, 目标口: int, 秒: float):
-    """连上游，再 CONNECT 到目标。返回 (读, 写)。"""
-    读, 写 = await _连(一.主机, 一.端口, 秒)
-    try:
-        if 一.方案 == "socks5":
-            await _socks5握手(读, 写, 一, 目标主, 目标口)
-        elif 一.方案 == "socks4":
-            await _socks4握手(读, 写, 一, 目标主, 目标口)
-        else:
-            await _http握手(读, 写, 一, 目标主, 目标口)
-    except Exception:
+    """连上游，再 CONNECT 到目标。返回 (读, 写)。
+
+    闪臣文本行不带协议。标成 http 实际是 s5（或反过来）时，换一种再握一次。
+    """
+    首选 = 一.方案 or "socks5"
+    备 = "http" if 首选 == "socks5" else ("socks5" if 首选 == "http" else "")
+    最后: Exception | None = None
+    for 方案 in (首选, 备) if 备 else (首选,):
+        读 = 写 = None
         try:
-            写.close()
-            await 写.wait_closed()
-        except Exception:
-            pass
-        raise
-    return 读, 写
+            读, 写 = await _连(一.主机, 一.端口, 秒)
+            await _按方案握(读, 写, 一, 方案, 目标主, 目标口)
+            if 方案 != 首选:
+                一.方案 = 方案
+                日志.info("上游 %s 实际是 %s，已改过来", 一.脱敏(), 方案)
+            return 读, 写
+        except Exception as 错:
+            最后 = 错
+            if 写 is not None:
+                try:
+                    写.close()
+                    await 写.wait_closed()
+                except Exception:
+                    pass
+    raise 最后 or OSError("上游握手失败")
 
 
 async def _socks5握手(读, 写, 一: 条, 目标主: str, 目标口: int) -> None:
@@ -285,7 +302,7 @@ async def 开socks(池子: 池) -> asyncio.AbstractServer:
 
 
 async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
-    上次换 = 0.0
+    上次换 = time.monotonic()
     上次刷 = 0.0
     if 池子.可自动白():
         try:
