@@ -534,7 +534,8 @@ class 池:
         缓 = str(self.闪臣态.get("本机IP") or "")
         if 缓 and time.time() - float(self.闪臣态.get("IP时间") or 0) < 600:
             return 缓
-        for 址 in ("https://api.ipify.org", "https://ifconfig.me/ip"):
+        for 址 in ("https://api.ipify.org", "https://ifconfig.me/ip",
+                   "https://checkip.amazonaws.com", "https://api.ip.sb/ip"):
             try:
                 求 = Request(址, headers={"User-Agent": "curl/8"})
                 with urlopen(求, timeout=5) as r:
