@@ -397,6 +397,7 @@ class 池:
             # 安全码是只写的：页面永远不回显，留空表示保持原样
             if str(补.get("sc_code") or "").strip():
                 self.设["sc_code"] = str(补["sc_code"]).strip()
+                self.闪臣态["码锁到"] = 0.0
             self.落盘()
 
     def 健康们(self) -> list[条]:
@@ -504,9 +505,13 @@ class 池:
     def 闪臣开(self) -> bool:
         return bool(str(self.设.get("sc_key") or "").strip())
 
+    def 码锁着(self) -> bool:
+        """闪臣对连续错的安全码会上锁，越试锁得越久，所以撞过 1006 就先停手。"""
+        return time.time() < float(self.闪臣态.get("码锁到") or 0)
+
     def 可自动白(self) -> bool:
         return (self.闪臣开() and bool(str(self.设.get("sc_code") or "").strip())
-                and bool(int(self.设.get("sc_white") or 0)))
+                and bool(int(self.设.get("sc_white") or 0)) and not self.码锁着())
 
     def _闪臣址(self, 名: str, 参: dict[str, Any]) -> str:
         底 = str(self.设.get("sc_base") or "").strip().rstrip("/") or 默认["sc_base"]
@@ -562,6 +567,11 @@ class 池:
             "remark": 备注,
         })
         好 = 码 == 0
+        if 码 == 1006:
+            self.闪臣态["码锁到"] = time.time() + 600
+            说 += "。已暂停自动重试 10 分钟，重存一次安全码可立刻解除"
+        elif 好:
+            self.闪臣态["码锁到"] = 0.0
         self.闪臣态["白名单说"] = f"{time.strftime('%H:%M:%S')} {'已加入白名单' if 好 else 说}"
         (日志.info if 好 else 日志.warning)("加白名单：%s", 说)
         if 好:
