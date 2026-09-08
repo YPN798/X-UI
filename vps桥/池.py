@@ -441,10 +441,10 @@ class 池:
         缓 = str(self.闪臣态.get("本机IP") or "")
         if 缓 and time.time() - float(self.闪臣态.get("IP时间") or 0) < 600:
             return 缓
-        for 址 in ("https://api.ipify.org", "https://ifconfig.me/ip", "https://ipinfo.io/ip"):
+        for 址 in ("https://api.ipify.org", "https://ifconfig.me/ip"):
             try:
                 求 = Request(址, headers={"User-Agent": "curl/8"})
-                with urlopen(求, timeout=8) as r:
+                with urlopen(求, timeout=5) as r:
                     文 = r.read().decode("utf-8", "replace").strip()
             except Exception:
                 continue
@@ -531,6 +531,31 @@ class 池:
         self.查余额()
         self.查白名单()
         self.闪臣态["刷时间"] = time.strftime("%H:%M:%S")
+
+    async def 一键开跑(self, 键: str, 码: str) -> list[str]:
+        """面板上就这一个按钮：存参数、加白名单、提一批、开定时换新。"""
+        补: dict[str, Any] = {"sc_key": 键, "sc_white": 1}
+        if 码:
+            补["sc_code"] = 码
+        if not int(self.设.get("auto_rotate") or 0):
+            补["auto_rotate"] = 300
+        await self.改设(补)
+        if not self.闪臣开():
+            return ["API Key 是空的，闪臣没启用。池子会保持现状。"]
+        步 = [f"已存 API Key {遮(键)}" + ("，安全码已更新" if 码 else "")]
+        if not str(self.设.get("sc_code") or "").strip():
+            步.append("还没存安全码——加白名单必须要它，先去闪臣个人中心设一个。")
+        else:
+            await asyncio.to_thread(self.加白名单)
+        await asyncio.to_thread(self.刷闪臣)
+        快 = self.闪臣快照()
+        步.append(f"剩余流量：{快['余额'] or 快['余额说'] or '查不到'}")
+        步.append(f"本机出口 IP {快['本机IP'] or '没问到'}："
+                  + ("已在白名单" if 快["已加白"] else "不在白名单，提取会被拒"))
+        步.append(await self.换新())
+        步.append(f"自动换新：每 {int(self.设.get('auto_rotate') or 0)} 秒换一批，"
+                  f"每批 {int(self.设.get('sc_count') or 1)} 条")
+        return 步
 
     def 提取地址(self) -> str:
         """填了闪臣 Key 就按参数自动拼提取地址，否则用手填的 fetch_url。"""

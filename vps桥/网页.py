@@ -47,26 +47,48 @@ th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--线);font-si
 .徽章{display:inline-block;padding:1px 7px;border-radius:999px;background:#eef2f6;font-size:12px}
 h2{font-size:15px;margin:0 0 4px}
 .卡 p.次{margin:0 0 12px}
+button[disabled]{opacity:.55;cursor:default}
+#概 div{margin:3px 0}
 #闪态{margin-top:12px;border-top:1px solid var(--线);padding-top:10px;font-size:13px}
 #闪态 .条{margin:0 0 6px}
 #闪态 table{margin-top:6px}
 #闪态 td,#闪态 th{padding:5px 6px}
+#话{white-space:pre-wrap;font-size:13px;border-left:3px solid var(--蓝)}
+summary{cursor:pointer;color:var(--次);user-select:none}
+details[open] summary{margin-bottom:12px}
+details form{margin-bottom:14px}
 code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px;word-break:break-all}
 </style>
 </head>
 <body>
 <main>
 <h1>代理池 <button class="灰" id="退" style="float:right">退出</button><a class="跳" id="去面板" target="_blank" rel="noopener">打开 X-UI 面板</a></h1>
-<p class="次">Xray 只连本机 41000。这里改池、换负载，不用重载面板。点绿色按钮进 X-UI。</p>
+<p class="次">Xray 只连本机 41000。填完下面两格就不用再管了。点绿色按钮进 X-UI。</p>
 <div class="卡" id="概"></div>
 <div class="卡">
   <h2>闪臣动态流量</h2>
-  <p class="次">填上 API Key 和安全码，桥会自己加白名单、自己提代理、到点自己换一批。</p>
+  <p class="次">只要这两样。存完自动加白名单、自动提代理、自动定时换新。</p>
   <form id="闪" class="行">
-    <label style="flex:1 1 260px">API Key
-      <input name="sc_key" placeholder="闪臣个人中心获取，留空=不用闪臣" style="width:100%">
+    <label style="flex:1 1 300px">API Key
+      <input name="sc_key" placeholder="闪臣个人中心获取" style="width:100%">
     </label>
-    <label>安全码 <input name="sc_code" type="password" autocomplete="new-password" placeholder="留空=不改"></label>
+    <label style="flex:1 1 200px">安全码
+      <input name="sc_code" type="password" autocomplete="off" style="width:100%">
+    </label>
+    <button type="submit" id="开跑">保存并自动开跑</button>
+  </form>
+  <div id="闪态"></div>
+</div>
+<div class="卡" id="话" hidden></div>
+<div class="卡">
+  <table>
+    <thead><tr><th>地址</th><th>状态</th><th>连接</th><th>上行</th><th>下行</th><th>来源</th><th>说明</th><th></th></tr></thead>
+    <tbody id="表"></tbody>
+  </table>
+</div>
+<details class="卡">
+<summary>高级设置（全自动跑着就别动）</summary>
+  <form id="设" class="行">
     <label>每次提几条 <input name="sc_count" type="number" min="1" max="500"></label>
     <label>IP 保持多久
       <select name="sc_time">
@@ -87,14 +109,6 @@ code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px;word-br
     <label>撞白名单自动加
       <select name="sc_white"><option value="1">开</option><option value="0">关</option></select>
     </label>
-    <button type="submit">保存并生效</button>
-    <button type="button" class="灰" id="加白">把本机加进白名单</button>
-    <button type="button" class="灰" id="刷闪">刷新余额和白名单</button>
-  </form>
-  <div id="闪态"></div>
-</div>
-<div class="卡">
-  <form id="设" class="行">
     <label>分发
       <select name="mode">
         <option value="round_robin">按连接轮询</option>
@@ -123,25 +137,19 @@ code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px;word-br
       <input name="fetch_url" placeholder="用闪臣就不用填这里" style="width:100%">
     </label>
     <label>fetch_cmd <input name="fetch_cmd" placeholder="命令 stdout，一行一条" style="min-width:200px"></label>
-    <button type="submit">保存设置</button>
+    <button type="submit" id="存高级">保存设置</button>
     <button type="button" class="灰" id="补">立刻补池</button>
     <button type="button" class="灰" id="换">立即换新</button>
+    <button type="button" class="灰" id="加白">把本机加进白名单</button>
+    <button type="button" class="灰" id="刷闪">刷新余额和白名单</button>
   </form>
-</div>
-<div class="卡">
   <form id="加">
-    <label>加一条（socks5://用户:密码@主机:端口 或 IP|端口|用户|密码，可多行）
+    <label>手动加代理（socks5://用户:密码@主机:端口 或 IP|端口|用户|密码，可多行）
       <textarea name="串" placeholder="socks5://user:pass@1.2.3.4:1080"></textarea>
     </label>
-    <p><button type="submit">加入池</button> <button type="button" class="红" id="清空">一键删除全部</button></p>
+    <p><button type="submit" id="手加">加入池</button> <button type="button" class="红" id="清空">一键删除全部</button></p>
   </form>
-</div>
-<div class="卡">
-  <table>
-    <thead><tr><th>地址</th><th>状态</th><th>连接</th><th>上行</th><th>下行</th><th>来源</th><th>说明</th><th></th></tr></thead>
-    <tbody id="表"></tbody>
-  </table>
-</div>
+</details>
 </main>
 <script>
 async function api(path, body){
@@ -160,11 +168,22 @@ function 挂链(u){
   a.href=u; a.style.display="inline-block";
 }
 function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
-// 四秒刷一次，正在打字的框不许动
+// 页面四秒刷一次。你动过但还没保存的表单，一个字都不许覆盖。
+const 脏 = {};
+document.addEventListener("input", e=>{
+  const f = e.target && e.target.form;
+  if(f && f.id) 脏[f.id] = 1;
+}, true);
 function 塞(f,名,值){
-  const el=f?f[名]:null;
-  if(!el || el===document.activeElement) return;
-  el.value=值;
+  if(!f || 脏[f.id]) return;
+  const el = f[名];
+  if(!el) return;
+  el.value = 值;
+}
+function 说(文){
+  const 盒 = document.getElementById("话");
+  盒.hidden = false;
+  盒.textContent = 文;
 }
 function 填闪(s){
   const 盒=document.getElementById("闪态");
@@ -213,12 +232,20 @@ function 填闪(s){
 function 填(d){
   挂链(d.panel_url);
   const s=d.闪臣||{};
-  document.getElementById("概").innerHTML =
-    "SOCKS <b>"+esc(d.listen)+"</b> · 管理 <b>"+esc(d.web)+"</b> · 健康 "+(d.健康||0)+"/"+(d.总数||0)+
-    " · 验活 <b>"+esc(d.check_host||"www.dola.com")+":"+(d.check_port||443)+"</b>"+
-    " · 上行 "+esc(d.上行文||"0 B")+" · 下行 "+esc(d.下行文||"0 B")+
-    (s.开&&s.余额 ? " · 闪臣剩 <b>"+esc(s.余额)+"</b>" : "")+
-    (d.上次补 ? "<br><span class=次>"+esc(d.上次补)+"</span>" : "");
+  let h="<div>SOCKS <b>"+esc(d.listen)+"</b> · 管理 <b>"+esc(d.web)+"</b> · 验活 <b>"+
+        esc(d.check_host||"www.dola.com")+":"+(d.check_port||443)+"</b></div>"+
+        "<div>代理池 <b>"+(d.健康||0)+"</b> 条健康 / 共 "+(d.总数||0)+" 条 · 上行 "+
+        esc(d.上行文||"0 B")+" · 下行 "+esc(d.下行文||"0 B")+"</div>";
+  if(s.开){
+    h+="<div>闪臣 Key <span class=好>已保存</span> · 安全码 "+
+       (s.有码?"<span class=好>已保存</span>":"<span class=坏>没保存</span>")+
+       " · 剩余 <b>"+esc(s.余额||"查询中…")+"</b> · 自动换新 "+
+       (d.auto_rotate?("每 <b>"+d.auto_rotate+"</b> 秒"):"<span class=坏>没开</span>")+"</div>";
+  }else{
+    h+="<div class=坏>闪臣还没启用：上面填 API Key 和安全码，点「保存并自动开跑」。</div>";
+  }
+  if(d.上次补) h+="<div class=次>最近："+esc(d.上次补)+"</div>";
+  document.getElementById("概").innerHTML=h;
   填闪(s);
   const tb=document.getElementById("表");
   tb.innerHTML="";
@@ -251,71 +278,80 @@ function 填(d){
     塞(f,"fetch_cmd",d.fetch_cmd||"");
     塞(f,"auto_rotate",d.auto_rotate||0);
     塞(f,"fetch_scheme",d.fetch_scheme||"");
+    塞(f,"sc_count",d.sc_count||8);
+    塞(f,"sc_time",String(d.sc_time==null?0:d.sc_time));
+    塞(f,"sc_protocol",d.sc_protocol||"http");
+    塞(f,"sc_cntry",d.sc_cntry||"");
+    塞(f,"sc_state",d.sc_state||"");
+    塞(f,"sc_city",d.sc_city||"");
+    塞(f,"sc_white",String(d.sc_white==null?1:d.sc_white));
     const g=document.getElementById("闪");
     塞(g,"sc_key",d.sc_key||"");
-    塞(g,"sc_count",d.sc_count||8);
-    塞(g,"sc_time",String(d.sc_time==null?0:d.sc_time));
-    塞(g,"sc_protocol",d.sc_protocol||"http");
-    塞(g,"sc_cntry",d.sc_cntry||"");
-    塞(g,"sc_state",d.sc_state||"");
-    塞(g,"sc_city",d.sc_city||"");
-    塞(g,"sc_white",String(d.sc_white==null?1:d.sc_white));
-    if(g.sc_code) g.sc_code.placeholder=s.有码?"已存，留空=不改":"必填，闪臣个人中心设置";
+    if(g.sc_code && !脏["闪"]) g.sc_code.placeholder=s.有码?"已保存，留空=不改":"必填，闪臣个人中心设置";
   }catch(e){ console.warn(e); }
 }
 async function 刷(){ 填(await api("/api/status")); }
-document.getElementById("设").onsubmit=async e=>{
-  e.preventDefault();
-  const f=e.target;
-  await api("/api/set",{
-    mode:f.mode.value, sticky:f.sticky.value,
-    pool_size:+f.pool_size.value, fail_n:+f.fail_n.value,
-    check_interval:+f.check_interval.value, check_conc:+f.check_conc.value,
-    fetch_url:f.fetch_url.value, fetch_cmd:f.fetch_cmd.value,
-    auto_rotate:+f.auto_rotate.value, fetch_scheme:f.fetch_scheme.value
-  });
-  刷();
-};
+// 所有按钮走这一条路：禁用、干活、把结果写到消息条、刷新
 async function 忙(id, 话, 干){
   const b=document.getElementById(id), 原=b.textContent;
   b.disabled=true; b.textContent=话;
-  try{ await 干(); }
-  catch(e){ alert(e.message); }
+  说(话);
+  try{ 说(await 干() || "好了"); }
+  catch(e){ 说("出错了：" + e.message); }
   finally{ b.disabled=false; b.textContent=原; 刷(); }
 }
-document.getElementById("闪").onsubmit=async e=>{
+document.getElementById("闪").onsubmit=e=>{
   e.preventDefault();
   const f=e.target;
-  await api("/api/set",{
-    sc_key:f.sc_key.value.trim(), sc_code:f.sc_code.value,
-    sc_count:+f.sc_count.value, sc_time:+f.sc_time.value,
-    sc_protocol:f.sc_protocol.value, sc_cntry:f.sc_cntry.value.trim(),
-    sc_state:f.sc_state.value.trim(), sc_city:f.sc_city.value.trim(),
-    sc_white:+f.sc_white.value
+  return 忙("开跑","正在开跑，要十几秒…",async()=>{
+    const j=await api("/api/sc/setup",{key:f.sc_key.value.trim(), code:f.sc_code.value});
+    f.sc_code.value=""; 脏["闪"]=0;
+    return (j.步||[]).join("\\n");
   });
-  f.sc_code.value="";
-  await api("/api/sc/refresh",{});
-  刷();
 };
-document.getElementById("加白").onclick=()=>忙("加白","加白名单中…",async()=>{
-  const j=await api("/api/sc/white",{});
-  if(!j.好) alert(j.msg||"加白名单失败");
-});
-document.getElementById("刷闪").onclick=()=>忙("刷闪","刷新中…",()=>api("/api/sc/refresh",{}));
-document.getElementById("加").onsubmit=async e=>{
+document.getElementById("设").onsubmit=e=>{
   e.preventDefault();
-  const 文=e.target.串.value;
-  const j=await api("/api/add",{串:文});
-  if(j.err) alert(j.err);
-  e.target.串.value="";
-  刷();
+  const f=e.target;
+  return 忙("存高级","保存中…",async()=>{
+    await api("/api/set",{
+      mode:f.mode.value, sticky:f.sticky.value,
+      pool_size:+f.pool_size.value, fail_n:+f.fail_n.value,
+      check_interval:+f.check_interval.value, check_conc:+f.check_conc.value,
+      fetch_url:f.fetch_url.value, fetch_cmd:f.fetch_cmd.value,
+      auto_rotate:+f.auto_rotate.value, fetch_scheme:f.fetch_scheme.value,
+      sc_count:+f.sc_count.value, sc_time:+f.sc_time.value,
+      sc_protocol:f.sc_protocol.value, sc_cntry:f.sc_cntry.value.trim(),
+      sc_state:f.sc_state.value.trim(), sc_city:f.sc_city.value.trim(),
+      sc_white:+f.sc_white.value
+    });
+    脏["设"]=0;
+    return "高级设置已保存";
+  });
 };
-document.getElementById("补").onclick=async()=>{ await api("/api/fill",{}); 刷(); };
-document.getElementById("换").onclick=()=>忙("换","换新中…",()=>api("/api/rotate",{}));
-document.getElementById("清空").onclick=async()=>{
+document.getElementById("加白").onclick=()=>忙("加白","加白名单中…",async()=>
+  (await api("/api/sc/white",{})).msg);
+document.getElementById("刷闪").onclick=()=>忙("刷闪","刷新中…",async()=>{
+  const j=await api("/api/sc/refresh",{});
+  const s=j.闪臣||{};
+  return "剩余流量 "+(s.余额||"查不到")+"，本机 "+(s.本机IP||"未知")+
+         (s.已加白?"已在白名单":"不在白名单");
+});
+document.getElementById("补").onclick=()=>忙("补","补池中…",async()=>
+  (await api("/api/fill",{})).msg);
+document.getElementById("换").onclick=()=>忙("换","换新中…",async()=>
+  (await api("/api/rotate",{})).msg);
+document.getElementById("加").onsubmit=e=>{
+  e.preventDefault();
+  const f=e.target;
+  return 忙("手加","加入中…",async()=>{
+    const j=await api("/api/add",{串:f.串.value});
+    f.串.value=""; 脏["加"]=0;
+    return j.err ? ("加了 "+j.n+" 条，出错："+j.err) : ("加了 "+j.n+" 条");
+  });
+};
+document.getElementById("清空").onclick=()=>{
   if(!confirm("确定删除池里全部代理？")) return;
-  await api("/api/clear",{});
-  刷();
+  return 忙("清空","删除中…",async()=>"删了 "+(await api("/api/clear",{})).n+" 条");
 };
 document.getElementById("退").onclick=async()=>{ await api("/api/logout",{}); location.href="/"; };
 刷(); setInterval(刷, 4000);
@@ -630,6 +666,10 @@ async def 处理管理(读, 写, 池子: 池) -> None:
         elif 法 == "POST" and 路 == "/api/rotate":
             说 = await 池子.换新()
             _json(写, 200, {"ok": True, "msg": 说})
+        elif 法 == "POST" and 路 == "/api/sc/setup":
+            步 = await 池子.一键开跑(str(数据.get("key") or "").strip(),
+                                     str(数据.get("code") or "").strip())
+            _json(写, 200, {"ok": True, "步": 步})
         elif 法 == "POST" and 路 == "/api/sc/white":
             好, 说 = await asyncio.to_thread(
                 池子.加白名单, str(数据.get("ip") or ""),
