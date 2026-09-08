@@ -16,7 +16,6 @@ from pathlib import Path
     "full:www.dola.com",
     "full:dola.com",
     "full:wss-normal-i18n.dola.com",
-    "domain:dola.com",
 ]
 出站 = {
     "tag": "socks-proxy",

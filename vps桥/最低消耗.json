@@ -162,8 +162,7 @@
         "domain": [
           "full:www.dola.com",
           "full:dola.com",
-          "full:wss-normal-i18n.dola.com",
-          "domain:dola.com"
+          "full:wss-normal-i18n.dola.com"
         ],
         "outboundTag": "socks-proxy"
       },
