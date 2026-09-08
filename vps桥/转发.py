@@ -243,10 +243,14 @@ async def 处理客户(读: asyncio.StreamReader, 写: asyncio.StreamWriter, 池
         秒 = float(池子.设.get("connect_timeout") or 8)
         上次 = ""
         上: tuple | None = None
-        for _ in range(2):
+        试过: set[str] = set()
+        for _ in range(3):
             选 = await 池子.选(目标主)
             if 选 is None:
-                raise OSError("代理池是空的")
+                break
+            if 选.号 in 试过:
+                break
+            试过.add(选.号)
             try:
                 上 = await 经上游连(选, 目标主, 目标口, 秒)
                 await 池子.报成(选)
@@ -257,23 +261,31 @@ async def 处理客户(读: asyncio.StreamReader, 写: asyncio.StreamWriter, 池
                 选 = None
                 上 = None
         if 上 is None:
-            raise OSError(上次 or "没有可用上游")
+            # 池空或上游全死：从 VPS 直连，页面还能开，总比 ERR_CONNECTION_CLOSED 强
+            日志.warning("上游不行，直连 %s:%s（%s）", 目标主, 目标口, 上次 or "池是空的")
+            池子.上次补 = f"上游不行，已直连 {目标主}:{目标口} {time.strftime('%H:%M:%S')} {上次}"
+            上 = await _连(目标主, 目标口, 秒)
+            选 = None
 
         写.write(b"\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00")
         await 写.drain()
-        await 池子.进(选)
+        if 选 is not None:
+            await 池子.进(选)
         try:
             上读, 上写 = 上
 
             async def 记上(n: int) -> None:
-                await 池子.记流量(选, 上行=n)
+                if 选 is not None:
+                    await 池子.记流量(选, 上行=n)
 
             async def 记下(n: int) -> None:
-                await 池子.记流量(选, 下行=n)
+                if 选 is not None:
+                    await 池子.记流量(选, 下行=n)
 
             await asyncio.gather(_对拷(读, 上写, 记上), _对拷(上读, 写, 记下))
         finally:
-            await 池子.出(选)
+            if 选 is not None:
+                await 池子.出(选)
     except Exception as 错:
         日志.debug("客户断开：%s", 错)
         try:

@@ -153,18 +153,20 @@
       },
       {
         "type": "field",
-        "port": "443",
-        "network": "udp",
-        "outboundTag": "blocked"
-      },
-      {
-        "type": "field",
+        "network": "tcp",
         "domain": [
           "full:www.dola.com",
           "full:dola.com",
-          "full:wss-normal-i18n.dola.com"
+          "full:wss-normal-i18n.dola.com",
+          "domain:dola.com"
         ],
         "outboundTag": "socks-proxy"
+      },
+      {
+        "type": "field",
+        "port": "443",
+        "network": "udp",
+        "outboundTag": "blocked"
       },
       {
         "type": "field",

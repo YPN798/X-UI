@@ -16,6 +16,7 @@ from pathlib import Path
     "full:www.dola.com",
     "full:dola.com",
     "full:wss-normal-i18n.dola.com",
+    "domain:dola.com",
 ]
 出站 = {
     "tag": "socks-proxy",
@@ -49,7 +50,7 @@ def 写入(p: Path | None = None) -> str:
     rt["domainStrategy"] = "IPIfNonMatch"
     rules = [r for r in (rt.get("rules") or []) if isinstance(r, dict)]
     rules = [r for r in rules if r.get("outboundTag") != "socks-proxy"]
-    插 = {"type": "field", "domain": 域, "outboundTag": "socks-proxy"}
+    插 = {"type": "field", "network": "tcp", "domain": 域, "outboundTag": "socks-proxy"}
     位 = 0
     for i, r in enumerate(rules):
         if r.get("inboundTag") == ["api"] or r.get("outboundTag") == "api":
