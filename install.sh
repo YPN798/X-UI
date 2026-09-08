@@ -3144,14 +3144,32 @@ yellow "请立刻保存以上信息。"
 # 装/更新桥，写入最低消耗，打印全部访问信息
 finish_bridge(){
 install_bridge || { red "桥未装上"; return 1; }
-if [[ -f /tmp/xui-bridge/最低消耗.json ]]; then
+# 已经有模板的机器多半是别人配好的，整份换成最低消耗会把人家的配置抹掉。
+# 写入分流.py 只往里加出站和规则，不动其余部分，老机器走它就够了。
+if [[ -f /tmp/xui-bridge/最低消耗.json ]] && ! has_tpl; then
 XUI_TPL=/tmp/xui-bridge/最低消耗.json apply_tpl || true
+elif has_tpl; then
+yellow "面板里已有 Xray 配置模板，不整份替换，只往里加 dola 分流"
+seed_bridge
 fi
 if [[ -f /opt/xui-bridge/写入分流.py ]]; then
-python3 /opt/xui-bridge/写入分流.py && green "已把 dola 分流写进正在跑的 Xray（走 127.0.0.1:41000）"
-sleep 2
-python3 /opt/xui-bridge/写入分流.py >/dev/null 2>&1 || true
+python3 /opt/xui-bridge/写入分流.py && green "已把 dola 分流写进 Xray（走 127.0.0.1:41000）"
 fi
+}
+
+# 面板数据库里已经有非空的 Xray 配置模板？
+has_tpl(){
+command -v sqlite3 >/dev/null 2>&1 || return 1
+local db tbl v
+db=$(xui_db) || return 1
+for t in settings setting; do
+if sqlite3 "$db" "SELECT name FROM sqlite_master WHERE type='table' AND name='$t';" 2>/dev/null | grep -q "$t"; then
+tbl=$t; break
+fi
+done
+[[ -z $tbl ]] && return 1
+v=$(sqlite3 "$db" "SELECT length(value) FROM $tbl WHERE key='xrayTemplateConfig' LIMIT 1;" 2>/dev/null)
+[[ -n $v && $v -gt 2 ]]
 }
 
 # 全自动安装：不问任何问题。已有面板则只补桥和分流。
