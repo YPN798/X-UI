@@ -70,10 +70,21 @@ th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--线);font-si
     <label>失败几次摘除 <input name="fail_n" type="number" min="1" max="20"></label>
     <label>验活间隔秒 <input name="check_interval" type="number" min="8" max="600"></label>
     <label>同时验活条数 <input name="check_conc" type="number" min="1" max="64"></label>
-    <label>fetch_url <input name="fetch_url" placeholder="GET 返回一行代理串" style="min-width:260px"></label>
-    <label>fetch_cmd <input name="fetch_cmd" placeholder="命令 stdout 一行" style="min-width:200px"></label>
+    <label>自动换新秒 <input name="auto_rotate" type="number" min="0" max="86400" placeholder="0=关，300=五分钟"></label>
+    <label>拉取协议
+      <select name="fetch_scheme">
+        <option value="">按接口返回</option>
+        <option value="socks5">强制 socks5</option>
+        <option value="http">强制 http</option>
+      </select>
+    </label>
+    <label style="flex:1 1 100%">提取接口 fetch_url
+      <input name="fetch_url" placeholder="https://global.shanchendaili.com/flow-api/get-ip.html?key=KEY&amp;count=10&amp;time=0&amp;protocol=http&amp;type=text&amp;pattern=1&amp;textSep=3" style="width:100%">
+    </label>
+    <label>fetch_cmd <input name="fetch_cmd" placeholder="命令 stdout，一行一条" style="min-width:200px"></label>
     <button type="submit">保存设置</button>
     <button type="button" class="灰" id="补">立刻补池</button>
+    <button type="button" class="灰" id="换">立即换新</button>
   </form>
 </div>
 <div class="卡">
@@ -144,6 +155,8 @@ function 填(d){
     if(f.check_conc) f.check_conc.value=d.check_conc||16;
     if(f.fetch_url) f.fetch_url.value=d.fetch_url||"";
     if(f.fetch_cmd) f.fetch_cmd.value=d.fetch_cmd||"";
+    if(f.auto_rotate) f.auto_rotate.value=d.auto_rotate||0;
+    if(f.fetch_scheme) f.fetch_scheme.value=d.fetch_scheme||"";
   }catch(e){ console.warn(e); }
 }
 async function 刷(){ 填(await api("/api/status")); }
@@ -154,7 +167,8 @@ document.getElementById("设").onsubmit=async e=>{
     mode:f.mode.value, sticky:f.sticky.value,
     pool_size:+f.pool_size.value, fail_n:+f.fail_n.value,
     check_interval:+f.check_interval.value, check_conc:+f.check_conc.value,
-    fetch_url:f.fetch_url.value, fetch_cmd:f.fetch_cmd.value
+    fetch_url:f.fetch_url.value, fetch_cmd:f.fetch_cmd.value,
+    auto_rotate:+f.auto_rotate.value, fetch_scheme:f.fetch_scheme.value
   });
   刷();
 };
@@ -167,6 +181,12 @@ document.getElementById("加").onsubmit=async e=>{
   刷();
 };
 document.getElementById("补").onclick=async()=>{ await api("/api/fill",{}); 刷(); };
+document.getElementById("换").onclick=async()=>{
+  const b=document.getElementById("换"); b.disabled=true; b.textContent="换新中…";
+  try{ await api("/api/rotate",{}); }
+  catch(e){ alert(e.message); }
+  finally{ b.disabled=false; b.textContent="立即换新"; 刷(); }
+};
 document.getElementById("清空").onclick=async()=>{
   if(!confirm("确定删除池里全部代理？")) return;
   await api("/api/clear",{});
@@ -481,6 +501,9 @@ async def 处理管理(读, 写, 池子: 池) -> None:
             _json(写, 200, {"ok": True})
         elif 法 == "POST" and 路 == "/api/fill":
             说 = await 池子.补齐()
+            _json(写, 200, {"ok": True, "msg": 说})
+        elif 法 == "POST" and 路 == "/api/rotate":
+            说 = await 池子.换新()
             _json(写, 200, {"ok": True, "msg": 说})
         else:
             _json(写, 404, {"ok": False, "err": "没有这个接口"})

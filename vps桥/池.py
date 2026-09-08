@@ -43,6 +43,8 @@ def 人读(n: int) -> str:
     "connect_timeout": 8,
     "fetch_url": "",
     "fetch_cmd": "",
+    "fetch_scheme": "",
+    "auto_rotate": 0,
     "web_pass": "YPN940815...",
     "proxies": [],
 }
@@ -144,6 +146,8 @@ class 池:
             "connect_timeout": int(self.设["connect_timeout"]),
             "fetch_url": self.设["fetch_url"],
             "fetch_cmd": self.设["fetch_cmd"],
+            "fetch_scheme": self.设.get("fetch_scheme") or "",
+            "auto_rotate": int(self.设.get("auto_rotate") or 0),
             "web_pass": self.设["web_pass"],
             "proxies": [一.串() for 一 in self.条们],
         }
@@ -244,10 +248,11 @@ class 池:
 
     async def 改设(self, 补: dict[str, Any]) -> None:
         async with self.锁:
-            for k in ("mode", "sticky", "fetch_url", "fetch_cmd"):
+            for k in ("mode", "sticky", "fetch_url", "fetch_cmd", "fetch_scheme"):
                 if k in 补 and 补[k] is not None:
                     self.设[k] = 补[k]
-            for k in ("pool_size", "fail_n", "check_interval", "check_conc", "connect_timeout"):
+            for k in ("pool_size", "fail_n", "check_interval", "check_conc",
+                      "connect_timeout", "auto_rotate"):
                 if k in 补 and 补[k] not in (None, ""):
                     self.设[k] = int(补[k])
             self.落盘()
@@ -316,14 +321,19 @@ class 池:
         if 要补:
             await self.补齐()
 
-    def 拉取下一条(self) -> dict | None:
+    def 有拉取源(self) -> bool:
+        return bool(str(self.设.get("fetch_url") or "").strip()
+                    or str(self.设.get("fetch_cmd") or "").strip())
+
+    def 拉取一批(self) -> list[dict]:
+        """调一次提取接口，把返回的每一行都解析出来。阻塞，需放线程里跑。"""
         址 = str(self.设.get("fetch_url") or "").strip()
         令 = str(self.设.get("fetch_cmd") or "").strip()
         文 = ""
         try:
             if 址:
                 求 = Request(址, headers={"User-Agent": "xui-bridge"})
-                with urlopen(求, timeout=15) as r:
+                with urlopen(求, timeout=20) as r:
                     文 = r.read().decode("utf-8", "replace")
             elif 令:
                 import subprocess
@@ -331,21 +341,33 @@ class 池:
                     令, shell=True, timeout=30, stderr=subprocess.STDOUT,
                 ).decode("utf-8", "replace")
             else:
-                return None
+                return []
         except Exception as 错:
             self.上次补 = f"拉取失败 {time.strftime('%H:%M:%S')} {错}"
             日志.warning("%s", self.上次补)
-            return None
-        for 行 in (文 or "").splitlines():
+            return []
+        指定 = 规范协议(self.设.get("fetch_scheme")) if self.设.get("fetch_scheme") else ""
+        出 = []
+        for 行 in (文 or "").replace("\r", "\n").split("\n"):
             行 = 行.strip()
-            if not 行 or 行.startswith("#"):
+            if not 行 or 行.startswith("#") or 行.startswith(("{", "[")):
                 continue
             try:
-                return 拆(行)
+                信 = 拆(行)
             except ValueError:
                 continue
-        self.上次补 = f"拉取无有效行 {time.strftime('%H:%M:%S')}"
-        return None
+            if 指定:
+                信["方案"] = 指定
+            出.append(信)
+        if not 出:
+            self.上次补 = (f"拉取无有效行 {time.strftime('%H:%M:%S')}，"
+                          f"接口返回：{(文 or '').strip()[:140]}")
+            日志.warning("%s", self.上次补)
+        return 出
+
+    def 拉取下一条(self) -> dict | None:
+        批 = self.拉取一批()
+        return 批[0] if 批 else None
 
     async def 补齐(self) -> str:
         目标 = max(0, int(self.设.get("pool_size") or 0))
@@ -353,22 +375,46 @@ class 池:
             健康数 = len(self.健康们())
         if 目标 <= 0 or 健康数 >= 目标:
             return "池已够，不补"
-        if not str(self.设.get("fetch_url") or "").strip() and not str(self.设.get("fetch_cmd") or "").strip():
+        if not self.有拉取源():
             说 = "健康不足但未配置 fetch_url / fetch_cmd，保持现有池"
             self.上次补 = 说
             return 说
         要 = 目标 - 健康数
         成 = 0
-        for _ in range(要):
-            信 = await asyncio.to_thread(self.拉取下一条)
-            if not 信:
+        批 = await asyncio.to_thread(self.拉取一批)
+        for 信 in 批:
+            if 成 >= 要:
                 break
             try:
-                await self.加(给上游(信), 来源="拉取")
+                await self.加(信, 来源="拉取")
                 成 += 1
             except ValueError as 错:
                 日志.warning("拉取入池失败：%s", 错)
         说 = f"补入 {成} 条，健康 {len(self.健康们())}/{目标}"
+        self.上次补 = 说
+        日志.info("%s", 说)
+        return 说
+
+    async def 换新(self) -> str:
+        """丢掉全部拉取来的代理，重新提一批。手动添加的保留不动。"""
+        if not self.有拉取源():
+            说 = "未配置提取接口，无法换新"
+            self.上次补 = 说
+            return 说
+        批 = await asyncio.to_thread(self.拉取一批)
+        if not 批:
+            return self.上次补 or "换新失败，保持原池"
+        async with self.锁:
+            self.条们 = [一 for 一 in self.条们 if 一.来源 != "拉取"]
+            self.粘 = {}
+            for 信 in 批:
+                try:
+                    self._塞(信, 来源="拉取", 落盘=False)
+                except ValueError as 错:
+                    日志.warning("换新入池失败：%s", 错)
+            self.落盘()
+            数 = len([一 for 一 in self.条们 if 一.来源 == "拉取"])
+        说 = f"已换新，拉取来源 {数} 条 {time.strftime('%H:%M:%S')}"
         self.上次补 = 说
         日志.info("%s", 说)
         return 说
@@ -388,6 +434,8 @@ class 池:
             "connect_timeout": int(self.设["connect_timeout"]),
             "fetch_url": self.设["fetch_url"],
             "fetch_cmd": self.设["fetch_cmd"],
+            "fetch_scheme": self.设.get("fetch_scheme") or "",
+            "auto_rotate": int(self.设.get("auto_rotate") or 0),
             "上次补": self.上次补,
             "健康": len(self.健康们()),
             "总数": len(self.条们),

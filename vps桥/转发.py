@@ -9,6 +9,7 @@ import logging
 import socket
 import ssl
 import struct
+import time
 
 from 池 import 池, 条
 from 解析 import 本机主机
@@ -284,6 +285,7 @@ async def 开socks(池子: 池) -> asyncio.AbstractServer:
 
 
 async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
+    上次换 = 0.0
     while not 停.is_set():
         间隔 = max(8, int(池子.设.get("check_interval") or 30))
         秒 = float(池子.设.get("connect_timeout") or 8)
@@ -305,10 +307,16 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
 
         if 拷:
             await asyncio.gather(*(验(一) for 一 in 拷))
+        换期 = max(0, int(池子.设.get("auto_rotate") or 0))
+        现在 = time.monotonic()
         try:
-            await 池子.补齐()
+            if 换期 and 现在 - 上次换 >= 换期:
+                上次换 = 现在
+                await 池子.换新()
+            else:
+                await 池子.补齐()
         except Exception as 错:
-            日志.warning("补池失败：%s", 错)
+            日志.warning("补池/换新失败：%s", 错)
         池子.写状态()
         try:
             await asyncio.wait_for(停.wait(), timeout=间隔)
