@@ -227,6 +227,9 @@ class 池:
             源 = "手加"
             if isinstance(一, dict) and 一.get("串"):
                 源, 一 = str(一.get("来源") or "手加"), 一["串"]
+            elif "shanchendaili.com" in str(一):
+                # 补来源那版之前存的纯字符串，认回拉取，否则换新永远清不掉它们
+                源 = "拉取"
             try:
                 self._塞(一, 来源=源, 落盘=False)
             except ValueError as 错:
