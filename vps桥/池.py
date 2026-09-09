@@ -107,14 +107,20 @@ def 人读(n: int) -> str:
     "sc_count": 30,
     "sc_time": 0,
     "sc_protocol": "s5",
-    "sc_cntry": "JP",
-    "sc_state": "Tokyo",
+    # 三格留空让闪臣按 any 发货，一批里混各个国家
+    "sc_cntry": "",
+    "sc_state": "",
     "sc_city": "",
     "sc_white": 1,
-    "defaults_ver": 3,
+    "defaults_ver": 4,
     "web_pass": "YPN940815...",
     "proxies": [],
 }
+
+# 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
+版本 = "2026-09-09.2"
+
+闪臣主机 = "shanchendaili.com"
 
 
 class 条:
@@ -134,6 +140,8 @@ class 条:
         self.下行 = int(信.get("下行") or 0)
         self.上次错误 = str(信.get("上次错误") or "")
         self.上次切换 = str(信.get("上次切换") or "")
+        # 经这条代理出去后外面看到的国家/城市/IP，探一次记下来
+        self.出口 = str(信.get("出口") or "")
 
     def 键(self) -> str:
         return f"{self.方案}|{self.主机}|{self.端口}|{self.用户}"
@@ -163,6 +171,7 @@ class 条:
             "下行文": 人读(self.下行),
             "上次错误": self.上次错误,
             "上次切换": self.上次切换,
+            "出口": self.出口,
         }
 
 
@@ -173,6 +182,10 @@ class 池:
         self.轮询 = 0
         self.粘: dict[str, str] = {}
         self.上次补 = ""
+        self.上次换新 = ""
+        # 验活循环每轮把自己的计时基准放这儿，面板好算还有多久换下一批
+        self.换基 = 0.0
+        self.上轮验活 = ""
         self.设: dict[str, Any] = dict(默认)
         self.条们: list[条] = []
         self.闪臣态: dict[str, Any] = {
@@ -216,10 +229,14 @@ class 池:
             是旧默认 = (str(self.设.get("sc_cntry") or ""), str(self.设.get("sc_state") or ""),
                        str(self.设.get("sc_city") or "")) == ("US", "California", "Losangeles")
             if 是旧默认:
-                self.设["sc_cntry"] = 默认["sc_cntry"]
-                self.设["sc_state"] = 默认["sc_state"]
-                self.设["sc_city"] = 默认["sc_city"]
+                self.设["sc_cntry"] = ""
+                self.设["sc_state"] = ""
+                self.设["sc_city"] = ""
                 self.设["sc_protocol"] = 默认["sc_protocol"]
+            # v3 钉的是东京。那也是我们塞的，不是用户挑的，一并放回随机
+            if 旧版 < 4 and (str(self.设.get("sc_cntry") or ""), str(self.设.get("sc_state") or ""),
+                             str(self.设.get("sc_city") or "")) == ("JP", "Tokyo", ""):
+                self.设["sc_cntry"] = self.设["sc_state"] = self.设["sc_city"] = ""
             self.设["defaults_ver"] = 默认["defaults_ver"]
         self.条们 = []
         for 一 in 原.get("proxies") or []:
@@ -227,8 +244,9 @@ class 池:
             源 = "手加"
             if isinstance(一, dict) and 一.get("串"):
                 源, 一 = str(一.get("来源") or "手加"), 一["串"]
-            elif "shanchendaili.com" in str(一):
-                # 补来源那版之前存的纯字符串，认回拉取，否则换新永远清不掉它们
+            # 闪臣的线路只可能是提取来的。补来源之前存下的那批被当成手加，
+            # 换新永远清不掉，池子从 30 涨到 56。不管存成什么格式，一律认回拉取
+            if 闪臣主机 in str(一):
                 源 = "拉取"
             try:
                 self._塞(一, 来源=源, 落盘=False)
@@ -303,7 +321,10 @@ class 池:
                 continue
             一.上行 = int(命.get("上行") or 0)
             一.下行 = int(命.get("下行") or 0)
+            一.出口 = str(命.get("出口") or "")
         self.起算 = str(文.get("起算") or self.起算)
+        self.上次补 = str(文.get("上次补") or "")
+        self.上次换新 = str(文.get("上次换新") or "")
         if "总上行" in 文 or "总下行" in 文:
             self.总上行 = int(文.get("总上行") or 0)
             self.总下行 = int(文.get("总下行") or 0)
@@ -315,7 +336,10 @@ class 池:
     def 写状态(self) -> None:
         出 = {
             "时间": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "版本": 版本,
             "上次补": self.上次补,
+            "上次换新": self.上次换新,
+            "上轮验活": self.上轮验活,
             "模式": self.设["mode"],
             "粘住": self.设["sticky"],
             "起算": self.起算,
@@ -399,6 +423,13 @@ class 池:
                 self.设["sc_code"] = str(补["sc_code"]).strip()
                 self.闪臣态["码锁到"] = 0.0
             self.落盘()
+
+    def 下次换秒(self) -> int:
+        """还有多少秒换下一批。没开自动换新返回 -1。"""
+        换期 = max(0, int(self.设.get("auto_rotate") or 0))
+        if not 换期 or not self.换基:
+            return -1
+        return max(0, int(换期 - (time.monotonic() - self.换基)))
 
     def 健康们(self) -> list[条]:
         return [一 for 一 in self.条们 if 一.启用 and 一.健康]
@@ -721,7 +752,7 @@ class 池:
                 str(self.设.get("sc_cntry") or "").strip(),
                 str(self.设.get("sc_state") or "").strip(),
                 str(self.设.get("sc_city") or "").strip(),
-            ) if x) or "随机",
+            ) if x) or "随机（不限国家，每批混合）",
         }
 
     # ---- 提取与补池 ------------------------------------------------------
@@ -857,9 +888,15 @@ class 池:
             return 说
         批 = await asyncio.to_thread(self.拉取一批)
         if not 批:
-            return self.上次补 or "换新失败，保持原池"
+            说 = self.上次补 or "换新失败，保持原池"
+            if "换新失败" not in 说:
+                说 = f"换新失败 {time.strftime('%H:%M:%S')}：{说}"
+            self.上次补 = 说
+            日志.warning("%s", 说)
+            return 说
         async with self.锁:
-            self.条们 = [一 for 一 in self.条们 if 一.来源 != "拉取"]
+            # 闪臣的线路不管标成什么来源都一起换掉，别再让老的赖着
+            self.条们 = [一 for 一 in self.条们 if 一.来源 != "拉取" and 闪臣主机 not in 一.主机]
             self.粘 = {}
             for 信 in 批:
                 try:
@@ -868,6 +905,7 @@ class 池:
                     日志.warning("换新入池失败：%s", 错)
             self.落盘()
             数 = len([一 for 一 in self.条们 if 一.来源 == "拉取"])
+        self.上次换新 = time.strftime("%Y-%m-%d %H:%M:%S")
         说 = f"已换新，拉取来源 {数} 条 {time.strftime('%H:%M:%S')}"
         self.上次补 = 说
         日志.info("%s", 说)
@@ -900,7 +938,11 @@ class 池:
             "sc_city": self.设.get("sc_city") or "",
             "sc_white": int(self.设.get("sc_white") or 0),
             "闪臣": self.闪臣快照(),
+            "版本": 版本,
             "上次补": self.上次补,
+            "上次换新": self.上次换新,
+            "下次换": self.下次换秒(),
+            "上轮验活": self.上轮验活,
             "健康": len(self.健康们()),
             "总数": len(self.条们),
             "上行": sum(一.上行 for 一 in self.条们),

@@ -85,7 +85,7 @@ code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px;word-br
 <div class="卡" id="话" hidden></div>
 <div class="卡">
   <table>
-    <thead><tr><th>地址</th><th>状态</th><th>连接</th><th>上行</th><th>下行</th><th>来源</th><th>说明</th><th></th></tr></thead>
+    <thead><tr><th>地址</th><th>状态</th><th>出口</th><th>连接</th><th>上行</th><th>下行</th><th>来源</th><th>说明</th><th></th></tr></thead>
     <tbody id="表"></tbody>
   </table>
 </div>
@@ -237,6 +237,19 @@ function 填闪(s){
     tb.appendChild(tr);
   });
 }
+// 把这批代理的出口国家点一遍，地区到底随不随机，看这行就够了
+function 分布(列){
+  const 计={}; let 没探=0;
+  列.forEach(p=>{
+    const 出=String(p.出口||"");
+    if(!出){ 没探++; return; }
+    const 国=出.startsWith("?")?"探不到":(出.split(" ")[0]||"?");
+    计[国]=(计[国]||0)+1;
+  });
+  const 项=Object.keys(计).sort((a,b)=>计[b]-计[a]).map(k=>esc(k)+" "+计[k]);
+  if(没探) 项.push("<span class=次>待探 "+没探+"</span>");
+  return 项.length?项.join(" · "):"<span class=次>还没探到</span>";
+}
 function 填(d){
   挂链(d.panel_url);
   const s=d.闪臣||{};
@@ -257,7 +270,14 @@ function 填(d){
   }else{
     h+="<div class=坏>闪臣还没启用：上面填 API Key 和安全码，点「保存并自动开跑」。</div>";
   }
+  h+="<div>这批出口 "+分布(d.池||[])+"</div>";
+  const 换=[];
+  if(d.上次换新) 换.push("上次换新 "+esc(d.上次换新));
+  if(d.下次换>=0) 换.push("下次约 "+d.下次换+" 秒后");
+  if(d.上轮验活) 换.push(esc(d.上轮验活));
+  if(换.length) h+="<div class=次>"+换.join(" · ")+"</div>";
   if(d.上次补) h+="<div class=次>最近："+esc(d.上次补)+"</div>";
+  if(d.版本) h+="<div class=次>桥版本 "+esc(d.版本)+"</div>";
   document.getElementById("概").innerHTML=h;
   填闪(s);
   const tb=document.getElementById("表");
@@ -268,14 +288,18 @@ function 填(d){
       const tr=document.createElement("tr");
       const 态=p.启用?(p.健康?"<span class=好>健康</span>":"<span class=坏>摘除</span>"):"<span class=次>停</span>";
       const 说=p.上次错误||p.上次切换||"";
+      const 出=String(p.出口||"");
+      const 出格=出?(出.startsWith("?")?"<span class=次>探不到</span>":esc(出))
+                  :"<span class=次>待探</span>";
       tr.innerHTML="<td>"+esc(p.地址)+" <span class=徽章>"+esc(p.方案)+"</span></td><td>"+态+
-        "</td><td>"+(p.连接||0)+"</td><td>"+esc(p.上行文||"0 B")+"</td><td>"+esc(p.下行文||"0 B")+
+        "</td><td>"+出格+"</td><td>"+(p.连接||0)+"</td><td>"+esc(p.上行文||"0 B")+
+        "</td><td>"+esc(p.下行文||"0 B")+
         "</td><td>"+esc(p.来源)+"</td><td class=次></td><td></td>";
-      tr.cells[6].textContent=说;
+      tr.cells[7].textContent=说;
       const b=document.createElement("button");
       b.className="红"; b.textContent="删除";
       b.onclick=async()=>{ await api("/api/del",{id:p.号||p.id}); 刷(); };
-      tr.cells[7].appendChild(b);
+      tr.cells[8].appendChild(b);
       tb.appendChild(tr);
     }catch(e){ console.warn(e); }
   });
