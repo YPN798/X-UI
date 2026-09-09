@@ -22,11 +22,11 @@
   "sc_count": 30,
   "sc_time": 0,
   "sc_protocol": "s5",
-  "sc_cntry": "JP",
-  "sc_state": "Tokyo",
+  "sc_cntry": "",
+  "sc_state": "",
   "sc_city": "",
   "sc_white": 1,
-  "defaults_ver": 3,
+  "defaults_ver": 4,
   "web_pass": "YPN940815...",
   "proxies": []
 }

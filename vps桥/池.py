@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 import time
 import uuid
 from pathlib import Path
@@ -107,7 +108,7 @@ def 人读(n: int) -> str:
     "sc_count": 30,
     "sc_time": 0,
     "sc_protocol": "s5",
-    # 三格留空让闪臣按 any 发货，一批里混各个国家
+    # 三格留空=每批随机一国，一次提够指定条数。钉死了就按钉的提
     "sc_cntry": "",
     "sc_state": "",
     "sc_city": "",
@@ -118,9 +119,20 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-09.3"
+版本 = "2026-09-09.4"
 
 闪臣主机 = "shanchendaili.com"
+
+# 闪臣海外住宅常用国。三格留空时每批从这里抽一个，整批同一国
+随机国库 = (
+    "US", "JP", "KR", "SG", "HK", "TW", "GB", "DE", "FR", "NL",
+    "IT", "ES", "CA", "AU", "BR", "IN", "TH", "VN", "MY", "PH",
+    "ID", "PL", "SE", "CH", "AE", "TR", "MX", "AR", "ZA", "RU",
+)
+
+
+def 地区文(国: str, 州: str = "", 市: str = "") -> str:
+    return "/".join(x for x in (国, 州, 市) if x)
 
 
 class 条:
@@ -183,6 +195,7 @@ class 池:
         self.粘: dict[str, str] = {}
         self.上次补 = ""
         self.上次换新 = ""
+        self.这批地区 = ""
         # 验活循环每轮把自己的计时基准放这儿，面板好算还有多久换下一批
         self.换基 = 0.0
         self.上轮验活 = ""
@@ -325,6 +338,7 @@ class 池:
         self.起算 = str(文.get("起算") or self.起算)
         self.上次补 = str(文.get("上次补") or "")
         self.上次换新 = str(文.get("上次换新") or "")
+        self.这批地区 = str(文.get("这批地区") or "")
         if "总上行" in 文 or "总下行" in 文:
             self.总上行 = int(文.get("总上行") or 0)
             self.总下行 = int(文.get("总下行") or 0)
@@ -339,6 +353,7 @@ class 池:
             "版本": 版本,
             "上次补": self.上次补,
             "上次换新": self.上次换新,
+            "这批地区": self.这批地区,
             "上轮验活": self.上轮验活,
             "模式": self.设["mode"],
             "粘住": self.设["sticky"],
@@ -720,11 +735,23 @@ class 池:
         步.append(f"本机出口 IP {快['本机IP'] or '没问到'}："
                   + ("已在白名单" if 快["已加白"] else "不在白名单，提取会被拒"))
         步.append(await self.换新())
-        步.append(f"自动换新：每 {int(self.设.get('auto_rotate') or 0)} 秒换一批，"
-                  f"每批 {int(self.设.get('sc_count') or 1)} 条")
+        步.append(f"自动换新：{self.换说()}，每批 {int(self.设.get('sc_count') or 1)} 条、一国")
         return 步
 
-    def 提取地址(self, 国: str | None = None, 州: str | None = None, 市: str | None = None) -> str:
+    def _钉地区(self) -> tuple[str, str, str]:
+        return (
+            str(self.设.get("sc_cntry") or "").strip(),
+            str(self.设.get("sc_state") or "").strip(),
+            str(self.设.get("sc_city") or "").strip(),
+        )
+
+    def 提取条数(self, 数: int | None = None) -> int:
+        if 数 is None:
+            数 = int(self.设.get("sc_count") or self.设.get("pool_size") or 1)
+        return max(1, min(500, int(数)))
+
+    def 提取地址(self, 国: str | None = None, 州: str | None = None, 市: str | None = None,
+                数: int | None = None) -> str:
         """填了闪臣 Key 就按参数自动拼提取地址，否则用手填的 fetch_url。"""
         if not self.闪臣开():
             return str(self.设.get("fetch_url") or "").strip()
@@ -733,7 +760,7 @@ class 池:
         市 = str(self.设.get("sc_city") or "").strip() if 市 is None else str(市 or "").strip()
         return self._闪臣址("get-ip.html", {
             "key": str(self.设.get("sc_key") or "").strip(),
-            "count": max(1, min(500, int(self.设.get("sc_count") or 1))),
+            "count": self.提取条数(数),
             "time": int(self.设.get("sc_time") or 0),
             "protocol": str(self.设.get("sc_protocol") or "s5"),
             # 桥是按行读的，只认 user:pass@host:port 且以 \n 分隔
@@ -746,7 +773,13 @@ class 池:
         })
 
     def 提取地址显(self) -> str:
-        址, 键 = self.提取地址(), str(self.设.get("sc_key") or "").strip()
+        钉 = self._钉地区()
+        if self.闪臣开() and not any(钉) and self.这批地区:
+            国 = self.这批地区.split("/")[0]
+            址 = self.提取地址(国, "", "")
+        else:
+            址 = self.提取地址()
+        键 = str(self.设.get("sc_key") or "").strip()
         return 址.replace(键, 遮(键)) if 键 and 键 in 址 else 址
 
     def 拉取方案(self) -> str:
@@ -773,11 +806,7 @@ class 池:
             "已加白": bool(本机) and any(一.get("ip") == 本机 for 一 in 白),
             "刷时间": self.闪臣态.get("刷时间") or "",
             "提取地址": self.提取地址显(),
-            "地区": "/".join(x for x in (
-                str(self.设.get("sc_cntry") or "").strip(),
-                str(self.设.get("sc_state") or "").strip(),
-                str(self.设.get("sc_city") or "").strip(),
-            ) if x) or "随机（不限国家，每批混合）",
+            "地区": self.地区说(),
         }
 
     # ---- 提取与补池 ------------------------------------------------------
@@ -839,40 +868,82 @@ class 池:
             日志.warning("%s", self.上次补)
         return 出
 
-    def 拉取一批(self) -> list[dict]:
-        """调提取接口。指定城市没货就退到州、国家，保证还能提上。"""
+    def 地区说(self) -> str:
+        钉 = 地区文(*self._钉地区())
+        if 钉:
+            return 钉
+        if self.这批地区:
+            return f"每批一国 · 这批 {self.这批地区}"
+        return "每批一国 · 下次提取时随机"
+
+    def _记这批(self, 国: str, 州: str = "", 市: str = "") -> None:
+        self.这批地区 = 地区文(国, 州, 市) or "随机"
+
+    def _随机国序(self, 避开: str = "") -> list[str]:
+        列 = [x for x in 随机国库 if x != 避开]
+        random.shuffle(列)
+        if 避开 and 避开 in 随机国库:
+            列.append(避开)
+        return 列 or list(随机国库)
+
+    def _抽地(self, 国: str, 州: str, 市: str, 数: int) -> list[dict]:
+        return self._抽一次(self.提取地址(国, 州, 市, 数=数), "")
+
+    def 拉取一批(self, 数: int | None = None, 换国: bool = False) -> list[dict]:
+        """一次提够指定条数。钉了地区就用钉的；没钉就整批同一国，每次换新再随机。"""
         令 = str(self.设.get("fetch_cmd") or "").strip()
+        数 = self.提取条数(数)
         if not self.闪臣开():
-            址 = self.提取地址()
+            址 = self.提取地址(数=数)
             return self._抽一次(址, 令) if 址 or 令 else []
-        国 = str(self.设.get("sc_cntry") or "").strip()
-        州 = str(self.设.get("sc_state") or "").strip()
-        市 = str(self.设.get("sc_city") or "").strip()
-        层 = [(国, 州, 市)]
-        if 市:
-            层.append((国, 州, ""))
-        if 州:
-            层.append((国, "", ""))
-        if 国:
-            层.append(("", "", ""))
-        见过: set[tuple[str, str, str]] = set()
+
+        钉国, 钉州, 钉市 = self._钉地区()
+        if 钉国 or 钉州 or 钉市:
+            层 = [(钉国, 钉州, 钉市)]
+            if 钉市:
+                层.append((钉国, 钉州, ""))
+            if 钉州:
+                层.append((钉国, "", ""))
+            # 钉死的不退到全球混合，否则又变成一批多国
+            见过: set[tuple[str, str, str]] = set()
+            最后 = ""
+            for 一 in 层:
+                if 一 in 见过:
+                    continue
+                见过.add(一)
+                出 = self._抽地(*一, 数)
+                if 出:
+                    self._记这批(*一)
+                    if 一 != (钉国, 钉州, 钉市):
+                        说 = f"指定地区没货，已改提到 {self.这批地区}，{len(出)} 条"
+                        self.上次补 = 说
+                        日志.info("%s", 说)
+                    return 出
+                最后 = self.上次补
+            if 令:
+                return self._抽一次("", 令)
+            self.上次补 = 最后
+            return []
+
+        # 没钉：换新抽新国；补池沿用这批，避免 30 条里混十几个国家
+        候选: list[str] = []
+        旧 = (self.这批地区 or "").split("/")[0]
+        if not 换国 and 旧 and 旧 in 随机国库:
+            候选.append(旧)
+        候选.extend(x for x in self._随机国序(旧) if x not in 候选)
         最后 = ""
-        for 一 in 层:
-            if 一 in 见过:
-                continue
-            见过.add(一)
-            出 = self._抽一次(self.提取地址(*一), "")
+        for 国 in 候选:
+            出 = self._抽地(国, "", "", 数)
             if 出:
-                if 一 != (国, 州, 市):
-                    地 = "/".join(x for x in 一 if x) or "随机"
-                    说 = f"指定地区没货，已改提到 {地}，{len(出)} 条"
-                    self.上次补 = 说
-                    日志.info("%s", 说)
+                self._记这批(国)
+                说 = f"这批 {国}，一次 {len(出)} 条"
+                self.上次补 = 说
+                日志.info("%s", 说)
                 return 出
             最后 = self.上次补
         if 令:
             return self._抽一次("", 令)
-        self.上次补 = 最后
+        self.上次补 = 最后 or "随机国都没货"
         return []
 
     def 拉取下一条(self) -> dict | None:
@@ -891,7 +962,7 @@ class 池:
             return 说
         要 = 目标 - 健康数
         成 = 0
-        批 = await asyncio.to_thread(self.拉取一批)
+        批 = await asyncio.to_thread(self.拉取一批, 要, False)
         for 信 in 批:
             if 成 >= 要:
                 break
@@ -911,7 +982,7 @@ class 池:
             说 = "未配置提取接口，无法换新"
             self.上次补 = 说
             return 说
-        批 = await asyncio.to_thread(self.拉取一批)
+        批 = await asyncio.to_thread(self.拉取一批, None, True)
         if not 批:
             说 = self.上次补 or "换新失败，保持原池"
             if "换新失败" not in 说:
@@ -931,7 +1002,8 @@ class 池:
             self.落盘()
             数 = len([一 for 一 in self.条们 if 一.来源 == "拉取"])
         self.上次换新 = time.strftime("%Y-%m-%d %H:%M:%S")
-        说 = f"已换新，拉取来源 {数} 条 {time.strftime('%H:%M:%S')}"
+        地 = f"，{self.这批地区}" if self.这批地区 else ""
+        说 = f"已换新{地}，拉取 {数} 条 {time.strftime('%H:%M:%S')}"
         self.上次补 = 说
         日志.info("%s", 说)
         return 说
@@ -968,6 +1040,7 @@ class 池:
             "上次换新": self.上次换新,
             "下次换": self.下次换秒(),
             "换说": self.换说(),
+            "这批地区": self.这批地区,
             "上轮验活": self.上轮验活,
             "健康": len(self.健康们()),
             "总数": len(self.条们),

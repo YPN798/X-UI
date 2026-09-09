@@ -67,7 +67,7 @@ code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px;word-br
 <div class="卡" id="概"></div>
 <div class="卡">
   <h2>闪臣动态流量</h2>
-  <p class="次">只要这两样。存完自动加白名单、自动提代理、自动定时换新。</p>
+  <p class="次">只要这两样。存完自动加白名单、自动提代理、自动定时换新。每批一国，数量一次提齐，下次换新再随机换国。</p>
   <form id="闪" class="行">
     <label style="flex:1 1 300px">API Key
       <input name="sc_key" placeholder="闪臣个人中心获取" style="width:100%">
@@ -106,9 +106,9 @@ code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px;word-br
         <option value="s5">socks5</option>
       </select>
     </label>
-    <label>国家 <input name="sc_cntry" placeholder="留空=不限" style="min-width:110px"></label>
-    <label>州/省 <input name="sc_state" placeholder="留空=不限" style="min-width:110px"></label>
-    <label>城市 <input name="sc_city" placeholder="留空=不限" style="min-width:110px"></label>
+    <label>国家 <input name="sc_cntry" placeholder="留空=每批随机一国" style="min-width:110px"></label>
+    <label>州/省 <input name="sc_state" placeholder="留空=整国" style="min-width:110px"></label>
+    <label>城市 <input name="sc_city" placeholder="留空=整国" style="min-width:110px"></label>
     <label>撞白名单自动加
       <select name="sc_white"><option value="1">开</option><option value="0">关</option></select>
     </label>
@@ -270,7 +270,8 @@ function 填(d){
   }else{
     h+="<div class=坏>闪臣还没启用：上面填 API Key 和安全码，点「保存并自动开跑」。</div>";
   }
-  h+="<div>这批出口 "+分布(d.池||[])+"</div>";
+  h+="<div>这批出口 "+分布(d.池||[])+
+     (d.这批地区?" · 提取指定 <b>"+esc(d.这批地区)+"</b>":"")+"</div>";
   const 换=[];
   if(d.上次换新) 换.push("上次换新 "+esc(d.上次换新));
   if(d.下次换>=0) 换.push("下次约 "+d.下次换+" 秒后");
