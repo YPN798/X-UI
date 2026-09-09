@@ -106,9 +106,9 @@ code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px;word-br
         <option value="s5">socks5</option>
       </select>
     </label>
-    <label>国家 <input name="sc_cntry" placeholder="JP" style="min-width:110px"></label>
-    <label>州/省 <input name="sc_state" placeholder="Tokyo" style="min-width:110px"></label>
-    <label>城市 <input name="sc_city" placeholder="留空=整个东京" style="min-width:110px"></label>
+    <label>国家 <input name="sc_cntry" placeholder="留空=不限" style="min-width:110px"></label>
+    <label>州/省 <input name="sc_state" placeholder="留空=不限" style="min-width:110px"></label>
+    <label>城市 <input name="sc_city" placeholder="留空=不限" style="min-width:110px"></label>
     <label>撞白名单自动加
       <select name="sc_white"><option value="1">开</option><option value="0">关</option></select>
     </label>

@@ -638,14 +638,16 @@ class 池:
 
     async def 一键开跑(self, 键: str, 码: str) -> list[str]:
         """面板上就这一个按钮：存参数、加白名单、提一批、开定时换新。"""
-        补: dict[str, Any] = {
-            "sc_key": 键, "sc_white": 1,
-            "sc_count": int(默认["sc_count"]), "pool_size": int(默认["pool_size"]),
-            "sc_time": int(默认["sc_time"]), "sc_protocol": 默认["sc_protocol"],
-            "sc_cntry": 默认["sc_cntry"], "sc_state": 默认["sc_state"],
-            "sc_city": 默认["sc_city"], "auto_rotate": int(默认["auto_rotate"]),
-            "check_interval": int(默认["check_interval"]),
-        }
+        补: dict[str, Any] = {"sc_key": 键, "sc_white": 1}
+        # 第一次开跑才铺默认值。之后再点，高级设置里调过的地区、条数不能被冲掉
+        if not self.闪臣开():
+            补.update({
+                "sc_count": int(默认["sc_count"]), "pool_size": int(默认["pool_size"]),
+                "sc_time": int(默认["sc_time"]), "sc_protocol": 默认["sc_protocol"],
+                "sc_cntry": 默认["sc_cntry"], "sc_state": 默认["sc_state"],
+                "sc_city": 默认["sc_city"], "auto_rotate": int(默认["auto_rotate"]),
+                "check_interval": int(默认["check_interval"]),
+            })
         if 码:
             补["sc_code"] = 码
         await self.改设(补)
