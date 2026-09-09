@@ -15,11 +15,28 @@ import asyncio
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 根 = Path(__file__).resolve().parent
 if str(根) not in sys.path:
     sys.path.insert(0, str(根))
+
+
+def 用北京时间() -> None:
+    """VPS 基本都是 UTC，面板上的时间跟人对不上。外面显式设过 TZ 就听外面的。"""
+    if not (os.environ.get("TZ") or "").strip():
+        os.environ["TZ"] = "Asia/Shanghai"
+    if not hasattr(time, "tzset"):
+        return
+    time.tzset()
+    # 机器上没装时区库的话，Asia/Shanghai 会被当成 UTC，退回不依赖库的写法
+    if os.environ["TZ"] == "Asia/Shanghai" and time.timezone != -8 * 3600:
+        os.environ["TZ"] = "CST-8"
+        time.tzset()
+
+
+用北京时间()
 
 from 池 import 池
 from 转发 import 开socks, 验活循环
