@@ -397,7 +397,7 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
         好 = len(池子.健康们())
         池子.上轮验活 = f"{time.strftime('%H:%M:%S')} 验了 {len(拷)} 条，健康 {好}，用了 {time.monotonic() - 起:.0f} 秒"
 
-        换期 = max(0, int(池子.设.get("auto_rotate") or 0))
+        换期 = 池子.有效换期()
         现在 = time.monotonic()
         if 池子.闪臣开() and 现在 - 上次刷 >= 60:
             上次刷 = 现在

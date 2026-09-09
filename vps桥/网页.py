@@ -265,7 +265,7 @@ function 填(d){
               :"<span class=坏>没保存</span>")+
        " · 剩余 <b>"+esc(s.余额||"查询中…")+"</b> · 地区 <b>"+esc(s.地区||"随机")+"</b>"+
        " · 每批 <b>"+(d.sc_count||30)+"</b> 条 · 自动换新 "+
-       (d.auto_rotate?("每 <b>"+d.auto_rotate+"</b> 秒"):"<span class=坏>没开</span>")+
+       (d.换说&&d.换说!=="关"?"<b>"+esc(d.换说)+"</b>":"<span class=坏>没开</span>")+
        " · 验活每 <b>"+(d.check_interval||120)+"</b> 秒</div>";
   }else{
     h+="<div class=坏>闪臣还没启用：上面填 API Key 和安全码，点「保存并自动开跑」。</div>";

@@ -118,7 +118,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-09.2"
+版本 = "2026-09-09.3"
 
 闪臣主机 = "shanchendaili.com"
 
@@ -424,9 +424,34 @@ class 池:
                 self.闪臣态["码锁到"] = 0.0
             self.落盘()
 
+    def 有效换期(self) -> int:
+        """真正采用的换新间隔（秒）。尊重 IP 时长：长效 IP 不在到期前被换掉。
+
+        sc_time 是闪臣的时长档，不是分钟数：
+          0 = 5-30 分钟（默认短效）  2 = 1-6 小时  1 = 每请求一换
+        用户把「自动换新秒」设成 300，却选了 1-6 小时，等于每 5 分钟就把
+        还没到期的 IP 扔了。这里给一个按档位的下限，取两者较大值。
+        """
+        设换 = max(0, int(self.设.get("auto_rotate") or 0))
+        模 = int(self.设.get("sc_time") or 0)
+        if 模 == 1:
+            return 0  # 每请求一换，池里就 1 条，用不着定时换新
+        if 设换 <= 0:
+            return 0  # 用户主动关了自动换新
+        下限 = 3600 if 模 == 2 else 300
+        return max(设换, 下限)
+
+    def 换说(self) -> str:
+        期 = self.有效换期()
+        if 期 <= 0:
+            模 = int(self.设.get("sc_time") or 0)
+            return "每请求一换" if 模 == 1 else "关"
+        设换 = max(0, int(self.设.get("auto_rotate") or 0))
+        return f"每 {期} 秒" + ("（按 IP 时长抬到下限）" if 期 > 设换 else "")
+
     def 下次换秒(self) -> int:
         """还有多少秒换下一批。没开自动换新返回 -1。"""
-        换期 = max(0, int(self.设.get("auto_rotate") or 0))
+        换期 = self.有效换期()
         if not 换期 or not self.换基:
             return -1
         return max(0, int(换期 - (time.monotonic() - self.换基)))
@@ -942,6 +967,7 @@ class 池:
             "上次补": self.上次补,
             "上次换新": self.上次换新,
             "下次换": self.下次换秒(),
+            "换说": self.换说(),
             "上轮验活": self.上轮验活,
             "健康": len(self.健康们()),
             "总数": len(self.条们),
