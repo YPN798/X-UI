@@ -102,7 +102,7 @@ PY
 
 装依赖
 mkdir -p /opt/xui-bridge /etc/xui-bridge
-cp -f "$根/主程序.py" "$根/解析.py" "$根/池.py" "$根/转发.py" "$根/网页.py" "$根/更新.py" /opt/xui-bridge/
+cp -f "$根/主程序.py" "$根/解析.py" "$根/池.py" "$根/转发.py" "$根/网页.py" "$根/更新.py" "$根/面板.html" "$根/登录.html" "$根/对接.md" /opt/xui-bridge/
 cp -f "$根/写入分流.py" "$根/最低消耗.json" /opt/xui-bridge/ 2>/dev/null || true
 写池
 cp -f "$根/xui-bridge.service" /etc/systemd/system/xui-bridge.service

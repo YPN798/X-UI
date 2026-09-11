@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""本机管理页：加减代理池，不经过 X-UI 面板。只听 127.0.0.1。"""
+"""本机管理页 + 机器 API。页面是旁边两个 html，接口给服务器读写用。"""
 
 from __future__ import annotations
 
@@ -15,481 +15,161 @@ import time
 from pathlib import Path
 from urllib.parse import parse_qs
 
-from 池 import 池
+from 池 import 国名表, 池, 版本, 洗国库, 默随机国库
 
 日志 = logging.getLogger("xui桥")
+旁 = Path(__file__).resolve().parent
 
-页 = """<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>代理池</title>
-<style>
-:root { --底:#f4f5f7; --板:#fff; --字:#1f2328; --次:#6b727c; --绿:#1a7f37; --红:#cf222e; --蓝:#0969da; --线:#d0d7de; }
-*{box-sizing:border-box}
-body{margin:0;font:14px/1.45 "Segoe UI","微软雅黑",sans-serif;background:var(--底);color:var(--字)}
-main{max-width:920px;margin:24px auto;padding:0 16px}
-h1{font-size:20px;margin:0 0 6px}
-.次{color:var(--次);margin:0 0 16px}
-.卡{background:var(--板);border:1px solid var(--线);border-radius:10px;padding:14px 16px;margin:0 0 14px}
-.行{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
-label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--次)}
-input,select,textarea{font:13px/1.4 inherit;padding:7px 9px;border:1px solid var(--线);border-radius:6px;min-width:140px}
-textarea{width:100%;min-height:72px}
-button{border:0;border-radius:6px;padding:8px 12px;background:var(--蓝);color:#fff;cursor:pointer}
-button.灰{background:#57606a}
-button.红{background:var(--红)}
-a.跳{display:none;float:right;margin-right:8px;text-decoration:none;border-radius:6px;padding:8px 12px;background:#1a7f37;color:#fff}
-table{width:100%;border-collapse:collapse}
-th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--线);font-size:13px}
-.好{color:var(--绿)} .坏{color:var(--红)}
-.徽章{display:inline-block;padding:1px 7px;border-radius:999px;background:#eef2f6;font-size:12px}
-h2{font-size:15px;margin:0 0 4px}
-.卡 p.次{margin:0 0 12px}
-button[disabled]{opacity:.55;cursor:default}
-#概 div{margin:3px 0}
-#闪态{margin-top:12px;border-top:1px solid var(--线);padding-top:10px;font-size:13px}
-#闪态 .条{margin:0 0 6px}
-#闪态 table{margin-top:6px}
-#闪态 td,#闪态 th{padding:5px 6px}
-#话{white-space:pre-wrap;font-size:13px;border-left:3px solid var(--蓝)}
-summary{cursor:pointer;color:var(--次);user-select:none}
-details[open] summary{margin-bottom:12px}
-details form{margin-bottom:14px}
-code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px;word-break:break-all}
-</style>
-</head>
-<body>
-<main>
-<h1>代理池 <button class="灰" id="退" style="float:right">退出</button><a class="跳" id="去面板" target="_blank" rel="noopener">打开 X-UI 面板</a></h1>
-<p class="次">Xray 只连本机 41000。填完下面两格就不用再管了。点绿色按钮进 X-UI。</p>
-<div class="卡" id="概"></div>
-<div class="卡">
-  <h2>提取源</h2>
-  <p class="次">闪臣或 IPIPGO，有哪个填哪个。两个都填时按「用哪家」来；自动则谁能提就用谁。每批一国，一次提齐。</p>
-  <form id="闪" class="行">
-    <label>用哪家
-      <select name="provider">
-        <option value="auto">自动（有哪个用哪个）</option>
-        <option value="shanchen">闪臣</option>
-        <option value="ipipgo">IPIPGO</option>
-      </select>
-    </label>
-    <label style="flex:1 1 260px">闪臣 API Key
-      <input name="sc_key" placeholder="闪臣个人中心" style="width:100%">
-    </label>
-    <label style="flex:1 1 160px">闪臣安全码
-      <input name="sc_code" type="password" autocomplete="new-password" readonly
-             onfocus="this.removeAttribute('readonly')" style="width:100%">
-    </label>
-    <label style="flex:1 1 100%">IPIPGO Key 或提取链接
-      <input name="go_key" placeholder="动态标准后台的 key，或整段 https://api.ipipgo.com/getip?..." style="width:100%">
-    </label>
-    <label>IPIPGO 账号（可选）
-      <input name="go_user" placeholder="账密提取才要" style="min-width:140px">
-    </label>
-    <label>IPIPGO 密码（可选）
-      <input name="go_pass" type="password" autocomplete="new-password" readonly
-             onfocus="this.removeAttribute('readonly')" placeholder="已保存则留空">
-    </label>
-    <button type="submit" id="开跑">保存并自动开跑</button>
-  </form>
-  <div id="闪态"></div>
-</div>
-<div class="卡" id="话" hidden></div>
-<div class="卡">
-  <table>
-    <thead><tr><th>地址</th><th>状态</th><th>出口</th><th>连接</th><th>上行</th><th>下行</th><th>来源</th><th>说明</th><th></th></tr></thead>
-    <tbody id="表"></tbody>
-  </table>
-</div>
-<details class="卡">
-<summary>高级设置（全自动跑着就别动）</summary>
-  <form id="设" class="行">
-    <label>每次提几条 <input name="sc_count" type="number" min="1" max="500"></label>
-    <label>IP 保持多久
-      <select name="sc_time">
-        <option value="0">5-30 分钟（推荐）</option>
-        <option value="2">1-6 小时</option>
-        <option value="1">每请求一换（池里只会有 1 条）</option>
-      </select>
-    </label>
-    <label>套餐协议
-      <select name="sc_protocol">
-        <option value="http">http</option>
-        <option value="s5">socks5</option>
-      </select>
-    </label>
-    <label>国家 <input name="sc_cntry" placeholder="留空=每批随机一国" style="min-width:110px"></label>
-    <label>州/省 <input name="sc_state" placeholder="留空=整国" style="min-width:110px"></label>
-    <label>城市 <input name="sc_city" placeholder="留空=整国" style="min-width:110px"></label>
-    <label>撞白名单自动加
-      <select name="sc_white"><option value="1">开</option><option value="0">关</option></select>
-    </label>
-    <label>分发
-      <select name="mode">
-        <option value="round_robin">按连接轮询</option>
-        <option value="least_conn">谁连接少走谁</option>
-      </select>
-    </label>
-    <label>粘住
-      <select name="sticky">
-        <option value="">关</option>
-        <option value="host">按目标主机</option>
-      </select>
-    </label>
-    <label>池目标条数 <input name="pool_size" type="number" min="0" max="500"></label>
-    <label>失败几次摘除 <input name="fail_n" type="number" min="1" max="20"></label>
-    <label>验活间隔秒 <input name="check_interval" type="number" min="8" max="600"></label>
-    <label>同时验活条数 <input name="check_conc" type="number" min="1" max="64"></label>
-    <label>自动换新秒 <input name="auto_rotate" type="number" min="0" max="86400" placeholder="0=关，300=五分钟"></label>
-    <label>拉取协议
-      <select name="fetch_scheme">
-        <option value="">按接口返回</option>
-        <option value="socks5">强制 socks5</option>
-        <option value="http">强制 http</option>
-      </select>
-    </label>
-    <label style="flex:1 1 100%">别家的提取接口 fetch_url<span class="次" id="盖"></span>
-      <input name="fetch_url" placeholder="用闪臣就不用填这里" style="width:100%">
-    </label>
-    <label>fetch_cmd <input name="fetch_cmd" placeholder="命令 stdout，一行一条" style="min-width:200px"></label>
-    <label>自动更新
-      <select name="auto_update">
-        <option value="1">开（自己拉新代码）</option>
-        <option value="0">关</option>
-      </select>
-    </label>
-    <label>多少分钟查一次 <input name="update_minutes" type="number" min="1" max="10080"></label>
-    <button type="submit" id="存高级">保存设置</button>
-    <button type="button" class="灰" id="补">立刻补池</button>
-    <button type="button" class="灰" id="换">立即换新</button>
-    <button type="button" class="灰" id="加白">把本机加进白名单</button>
-    <button type="button" class="灰" id="刷闪">刷新余额和白名单</button>
-    <button type="button" class="灰" id="更新">现在检查更新</button>
-  </form>
-  <form id="加">
-    <label>手动加代理（socks5://用户:密码@主机:端口 或 IP|端口|用户|密码，可多行）
-      <textarea name="串" placeholder="socks5://user:pass@1.2.3.4:1080"></textarea>
-    </label>
-    <p><button type="submit" id="手加">加入池</button>
-       <button type="button" class="红" id="清空">一键删除全部</button>
-       <button type="button" class="灰" id="清量">流量计数清零</button></p>
-  </form>
-</details>
-</main>
-<script>
-async function api(path, body){
-  const o = {method: body ? "POST" : "GET", credentials:"same-origin"};
-  if(body){ o.headers={"Content-Type":"application/json"}; o.body=JSON.stringify(body); }
-  const r = await fetch(path, o);
-  if(r.status===401){ location.href="/"; throw new Error("要密码"); }
-  const t = await r.text();
-  let j; try{ j=JSON.parse(t); }catch(e){ throw new Error(t||r.status); }
-  if(!r.ok || j.ok===false) throw new Error(j.err||t);
-  return j;
-}
-function 挂链(u){
-  const a=document.getElementById("去面板");
-  if(!a||!u) return;
-  a.href=u; a.style.display="inline-block";
-}
-function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
-// 页面四秒刷一次。你动过但还没保存的表单，一个字都不许覆盖。
-const 脏 = {};
-document.addEventListener("input", e=>{
-  const f = e.target && e.target.form;
-  if(f && f.id) 脏[f.id] = 1;
-}, true);
-function 塞(f,名,值){
-  if(!f || 脏[f.id]) return;
-  const el = f[名];
-  if(!el) return;
-  el.value = 值;
-}
-function 说(文){
-  const 盒 = document.getElementById("话");
-  盒.hidden = false;
-  盒.textContent = 文;
-}
-function 填闪(s){
-  const 盒=document.getElementById("闪态");
-  if(!s || !s.开){
-    盒.innerHTML="<span class=次>还没填闪臣或 IPIPGO，提取没启用。</span>";
-    document.getElementById("盖").textContent="";
-    return;
-  }
-  document.getElementById("盖").textContent="（上面两家已接管，这里填了也不生效）";
-  const 白=s.白名单||[];
-  const 余=s.余额?("<b>"+esc(s.余额)+"</b>"):"<span class=次>还没查到</span>";
-  const 本=s.本机IP?esc(s.本机IP):"没问到";
-  const 态=s.本机IP?(s.已加白?"<span class=好>已在白名单</span>"
-                            :"<span class=坏>不在白名单，提取会被 1004 拒</span>")
-                  :"<span class=次>白名单状态未知</span>";
-  let h="<div class=条>剩余流量 "+余+(s.余额说?" <span class=坏>"+esc(s.余额说)+"</span>":"")+
-        " · 本机出口 IP <b>"+本+"</b> "+态+
-        (s.刷时间?" <span class=次>"+esc(s.刷时间)+" 刷的</span>":"")+"</div>";
-  if(s.白名单说) h+="<div class='条 次'>"+esc(s.白名单说)+"</div>";
-  if(!s.有码) h+="<div class='条 坏'>没存安全码，加删白名单都用不了。</div>";
-  else if(/1006/.test(s.白名单说||"")) h+="<div class='条 坏'>存进去的是 "+(s.码长||0)+
-    " 位。位数对不上的话，多半是浏览器把本站登录密码自动填进那一格了——"+
-    "重新手打一遍安全码再保存。</div>";
-  if(白.length){
-    h+="<table><thead><tr><th>白名单 IP</th><th>备注</th><th></th></tr></thead><tbody id=白表></tbody></table>";
-  }else{
-    h+="<div class='条 次'>白名单是空的。</div>";
-  }
-  if(s.ipipgo开) h+="<div class='条 次'>IPIPGO 动态标准：把本机出口 IP 加到他们后台白名单，提取链接从套餐页复制到上面那一格即可。</div>";
-  h+="<div class=条 style=margin-top:8px>提取地址 <code>"+esc(s.提取地址||"")+"</code></div>";
-  盒.innerHTML=h;
-  const tb=document.getElementById("白表");
-  if(!tb) return;
-  白.forEach(w=>{
-    const tr=document.createElement("tr");
-    tr.innerHTML="<td></td><td class=次></td><td></td>";
-    tr.cells[0].textContent=w.ip||"";
-    tr.cells[1].textContent=w.备注||"";
-    const b=document.createElement("button");
-    b.className="红"; b.textContent="删除";
-    b.onclick=async()=>{
-      if(!confirm("从闪臣白名单删掉 "+(w.ip||w.id)+"？")) return;
-      try{ await api("/api/sc/unwhite",{id:w.id,ip:w.ip}); }catch(e){ alert(e.message); }
-      刷();
-    };
-    tr.cells[2].appendChild(b);
-    tb.appendChild(tr);
-  });
-}
-// 把这批代理的出口国家点一遍，地区到底随不随机，看这行就够了
-function 分布(列){
-  const 计={}; let 没探=0;
-  列.forEach(p=>{
-    const 出=String(p.出口||"");
-    if(!出){ 没探++; return; }
-    const 国=出.startsWith("?")?"探不到":(出.split(" ")[0]||"?");
-    计[国]=(计[国]||0)+1;
-  });
-  const 项=Object.keys(计).sort((a,b)=>计[b]-计[a]).map(k=>esc(k)+" "+计[k]);
-  if(没探) 项.push("<span class=次>待探 "+没探+"</span>");
-  return 项.length?项.join(" · "):"<span class=次>还没探到</span>";
-}
-function 填(d){
-  挂链(d.panel_url);
-  const s=d.闪臣||{};
-  let h="<div>SOCKS <b>"+esc(d.listen)+"</b> · 管理 <b>"+esc(d.web)+"</b> · 验活 <b>"+
-        esc(d.check_host||"www.dola.com")+":"+(d.check_port||443)+"</b></div>"+
-        "<div>代理池 <b>"+(d.健康||0)+"</b> 条健康 / 共 "+(d.总数||0)+" 条 · 这批代理 上行 "+
-        esc(d.上行文||"0 B")+"、下行 "+esc(d.下行文||"0 B")+"</div>"+
-        "<div>累计 上行 <b>"+esc(d.总上行文||"0 B")+"</b>、下行 <b>"+esc(d.总下行文||"0 B")+
-        "</b><span class=次>（自 "+esc(d.起算||"")+" 起算，换新和重启都不清零）</span></div>";
-  if(s.开){
-    h+="<div>正在用 <b>"+esc(s.供应商||d.供应商||"无")+"</b>"+
-       (s.供应商选&&s.供应商选!=="auto"?"（指定）":"（自动）")+
-       " · 闪臣 "+(s.闪臣开?"<span class=好>已配</span>":"<span class=次>没配</span>")+
-       " · IPIPGO "+(s.ipipgo开?"<span class=好>已配</span>":"<span class=次>没配</span>")+
-       (s.闪臣开?(" · 剩余 <b>"+esc(s.余额||"查询中…")+"</b>"):"")+
-       " · 地区 <b>"+esc(s.地区||"随机")+"</b>"+
-       " · 每批 <b>"+(d.sc_count||30)+"</b> 条 · 自动换新 "+
-       (d.换说&&d.换说!=="关"?"<b>"+esc(d.换说)+"</b>":"<span class=坏>没开</span>")+
-       " · 验活每 <b>"+(d.check_interval||120)+"</b> 秒</div>";
-  }else{
-    h+="<div class=坏>还没启用：上面选一家或两家都填，点「保存并自动开跑」。</div>";
-  }
-  h+="<div>这批出口 "+分布(d.池||[])+
-     (d.这批地区?" · 提取指定 <b>"+esc(d.这批地区)+"</b>":"")+"</div>";
-  const 换=[];
-  if(d.上次换新) 换.push("上次换新 "+esc(d.上次换新));
-  if(d.下次换>=0) 换.push("下次约 "+d.下次换+" 秒后");
-  if(d.上轮验活) 换.push(esc(d.上轮验活));
-  if(换.length) h+="<div class=次>"+换.join(" · ")+"</div>";
-  if(d.上次补) h+="<div class=次>最近："+esc(d.上次补)+"</div>";
-  if(d.版本) h+="<div class=次>桥版本 "+esc(d.版本)+
-    " · 自动更新 "+(d.auto_update?"每 "+(d.update_minutes||5)+" 分钟":"关")+
-    (d.更新说?" · "+esc(d.更新说):"")+"</div>";
-  document.getElementById("概").innerHTML=h;
-  填闪(s);
-  const tb=document.getElementById("表");
-  tb.innerHTML="";
-  const 列=d.池||d.proxies||[];
-  列.forEach(p=>{
-    try{
-      const tr=document.createElement("tr");
-      const 态=p.启用?(p.健康?"<span class=好>健康</span>":"<span class=坏>摘除</span>"):"<span class=次>停</span>";
-      const 说=p.上次错误||p.上次切换||"";
-      const 出=String(p.出口||"");
-      const 出格=出?(出.startsWith("?")?"<span class=次>探不到</span>":esc(出))
-                  :"<span class=次>待探</span>";
-      tr.innerHTML="<td>"+esc(p.地址)+" <span class=徽章>"+esc(p.方案)+"</span></td><td>"+态+
-        "</td><td>"+出格+"</td><td>"+(p.连接||0)+"</td><td>"+esc(p.上行文||"0 B")+
-        "</td><td>"+esc(p.下行文||"0 B")+
-        "</td><td>"+esc(p.来源)+"</td><td class=次></td><td></td>";
-      tr.cells[7].textContent=说;
-      const b=document.createElement("button");
-      b.className="红"; b.textContent="删除";
-      b.onclick=async()=>{ await api("/api/del",{id:p.号||p.id}); 刷(); };
-      tr.cells[8].appendChild(b);
-      tb.appendChild(tr);
-    }catch(e){ console.warn(e); }
-  });
-  try{
-    const f=document.getElementById("设");
-    塞(f,"mode",d.mode||"round_robin");
-    塞(f,"sticky",d.sticky==="关"?"":(d.sticky||""));
-    塞(f,"pool_size",d.pool_size);
-    塞(f,"fail_n",d.fail_n);
-    塞(f,"check_interval",d.check_interval);
-    塞(f,"check_conc",d.check_conc||16);
-    塞(f,"fetch_url",d.fetch_url||"");
-    塞(f,"fetch_cmd",d.fetch_cmd||"");
-    塞(f,"auto_rotate",d.auto_rotate||0);
-    塞(f,"auto_update",String(d.auto_update?1:0));
-    塞(f,"update_minutes",d.update_minutes||5);
-    塞(f,"fetch_scheme",d.fetch_scheme||"");
-    塞(f,"sc_count",d.sc_count||30);
-    塞(f,"sc_time",String(d.sc_time==null?0:d.sc_time));
-    塞(f,"sc_protocol",d.sc_protocol||"s5");
-    塞(f,"sc_cntry",d.sc_cntry||"");
-    塞(f,"sc_state",d.sc_state||"");
-    塞(f,"sc_city",d.sc_city||"");
-    塞(f,"sc_white",String(d.sc_white==null?1:d.sc_white));
-    const g=document.getElementById("闪");
-    塞(g,"provider",s.供应商选||d.供应商选||"auto");
-    塞(g,"sc_key",d.sc_key||"");
-    塞(g,"go_key",(d.go_url&&!d.go_key)?d.go_url:(d.go_key||""));
-    塞(g,"go_user",d.go_user||"");
-    if(g.sc_code && !脏["闪"]) g.sc_code.placeholder=s.有码?"已保存，留空=不改":"闪臣才要";
-    if(g.go_pass && !脏["闪"]) g.go_pass.placeholder=s.有go密?"已保存，留空=不改":"账密提取才要";
-  }catch(e){ console.warn(e); }
-}
-async function 刷(){ 填(await api("/api/status")); }
-// 所有按钮走这一条路：禁用、干活、把结果写到消息条、刷新
-async function 忙(id, 话, 干){
-  const b=document.getElementById(id), 原=b.textContent;
-  b.disabled=true; b.textContent=话;
-  说(话);
-  try{ 说(await 干() || "好了"); }
-  catch(e){ 说("出错了：" + e.message); }
-  finally{ b.disabled=false; b.textContent=原; 刷(); }
-}
-document.getElementById("闪").onsubmit=e=>{
-  e.preventDefault();
-  const f=e.target;
-  return 忙("开跑","正在开跑，要十几秒…",async()=>{
-    const j=await api("/api/sc/setup",{
-      provider:f.provider.value, key:f.sc_key.value.trim(), code:f.sc_code.value,
-      go_key:f.go_key.value.trim(), go_user:f.go_user.value.trim(), go_pass:f.go_pass.value
-    });
-    f.sc_code.value=""; f.go_pass.value=""; 脏["闪"]=0;
-    return (j.步||[]).join("\\n");
-  });
-};
-document.getElementById("设").onsubmit=e=>{
-  e.preventDefault();
-  const f=e.target;
-  return 忙("存高级","保存中…",async()=>{
-    await api("/api/set",{
-      mode:f.mode.value, sticky:f.sticky.value,
-      pool_size:+f.pool_size.value, fail_n:+f.fail_n.value,
-      check_interval:+f.check_interval.value, check_conc:+f.check_conc.value,
-      fetch_url:f.fetch_url.value, fetch_cmd:f.fetch_cmd.value,
-      auto_rotate:+f.auto_rotate.value, fetch_scheme:f.fetch_scheme.value,
-      sc_count:+f.sc_count.value, sc_time:+f.sc_time.value,
-      sc_protocol:f.sc_protocol.value, sc_cntry:f.sc_cntry.value.trim(),
-      sc_state:f.sc_state.value.trim(), sc_city:f.sc_city.value.trim(),
-      sc_white:+f.sc_white.value,
-      auto_update:+f.auto_update.value, update_minutes:+f.update_minutes.value
-    });
-    脏["设"]=0;
-    return "高级设置已保存";
-  });
-};
-document.getElementById("加白").onclick=()=>忙("加白","加白名单中…",async()=>
-  (await api("/api/sc/white",{})).msg);
-document.getElementById("刷闪").onclick=()=>忙("刷闪","刷新中…",async()=>{
-  const j=await api("/api/sc/refresh",{});
-  const s=j.闪臣||{};
-  return "剩余流量 "+(s.余额||"查不到")+"，本机 "+(s.本机IP||"未知")+
-         (s.已加白?"已在白名单":"不在白名单");
-});
-document.getElementById("更新").onclick=()=>忙("更新","检查中…",async()=>
-  (await api("/api/update",{})).msg);
-document.getElementById("补").onclick=()=>忙("补","补池中…",async()=>
-  (await api("/api/fill",{})).msg);
-document.getElementById("换").onclick=()=>忙("换","换新中…",async()=>
-  (await api("/api/rotate",{})).msg);
-document.getElementById("加").onsubmit=e=>{
-  e.preventDefault();
-  const f=e.target;
-  return 忙("手加","加入中…",async()=>{
-    const j=await api("/api/add",{串:f.串.value});
-    f.串.value=""; 脏["加"]=0;
-    return j.err ? ("加了 "+j.n+" 条，出错："+j.err) : ("加了 "+j.n+" 条");
-  });
-};
-document.getElementById("清空").onclick=()=>{
-  if(!confirm("确定删除池里全部代理？")) return;
-  return 忙("清空","删除中…",async()=>"删了 "+(await api("/api/clear",{})).n+" 条");
-};
-document.getElementById("清量").onclick=()=>{
-  if(!confirm("累计流量从现在重新算？")) return;
-  return 忙("清量","清零中…",async()=>(await api("/api/traffic/reset",{})).msg);
-};
-document.getElementById("退").onclick=async()=>{ await api("/api/logout",{}); location.href="/"; };
-刷(); setInterval(刷, 4000);
-</script>
-</body>
-</html>
-"""
 
-登页 = """<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>代理池登录</title>
-<style>
-body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
-background:#f4f5f7;font:14px/1.45 "Segoe UI","微软雅黑",sans-serif;color:#1f2328}
-.卡{background:#fff;border:1px solid #d0d7de;border-radius:10px;padding:22px 24px;width:320px}
-h1{font-size:18px;margin:0 0 8px}
-p{color:#6b727c;margin:0 0 14px}
-input{width:100%;padding:8px 10px;border:1px solid #d0d7de;border-radius:6px;font:14px inherit}
-button{margin-top:12px;width:100%;border:0;border-radius:6px;padding:9px;background:#0969da;color:#fff;cursor:pointer}
-a.跳{display:none;margin-top:10px;text-align:center;text-decoration:none;border-radius:6px;padding:9px;background:#1a7f37;color:#fff}
-.错{color:#cf222e;margin-top:8px;min-height:1.2em}
-</style>
-</head>
-<body>
-<div class="卡">
-<h1>代理池</h1>
-<p>输入密码后才能改池。API 同样要这个密码。</p>
-<form id="登">
-<input name="pass" type="password" autocomplete="current-password" autofocus>
-<button type="submit">进入</button>
-<a class="跳" id="去面板" target="_blank" rel="noopener">打开 X-UI 面板</a>
-<div class="错" id="错"></div>
-</form>
-</div>
-<script>
-fetch("/api/panel").then(r=>r.json()).then(j=>{
-  if(j&&j.url){ const a=document.getElementById("去面板"); a.href=j.url; a.style.display="block"; }
-}).catch(()=>{});
-document.getElementById("登").onsubmit=async e=>{
-  e.preventDefault();
-  const 密=e.target.pass.value;
-  const r=await fetch("/api/login",{method:"POST",credentials:"same-origin",
-    headers:{"Content-Type":"application/json"},body:JSON.stringify({pass:密})});
-  const j=await r.json().catch(()=>({}));
-  if(r.ok && j.ok){ location.href="/"; return; }
-  document.getElementById("错").textContent=j.err||"密码不对";
-};
-</script>
-</body>
-</html>
-"""
+def _读页(名: str, 垫: str) -> str:
+    p = 旁 / 名
+    try:
+        return p.read_text(encoding="utf-8")
+    except Exception:
+        return 垫
+
+
+页 = _读页("面板.html", "<!DOCTYPE html><meta charset=utf-8><title>桥</title><p>缺 面板.html，重新跑一次更新。")
+登页 = _读页("登录.html", "<!DOCTYPE html><meta charset=utf-8><title>登录</title><p>缺 登录.html")
+对接文 = _读页("对接.md", "# 缺 对接.md，重新跑一次更新。")
 
 _饼干名 = "xui_bridge"
+
+接口表 = (
+    {"method": "GET", "path": "/api", "desc": "接口目录、鉴权和全部字段说明"},
+    {"method": "GET", "path": "/api/docs", "desc": "对接文档 Markdown，和 /docs 同一份"},
+    {"method": "GET", "path": "/docs", "desc": "对接文档网页，无需登录"},
+    {"method": "GET", "path": "/api/health", "desc": "轻量探活：版本、监听、健康数。不含密钥"},
+    {"method": "GET", "path": "/api/status", "desc": "完整状态，含池和设置。兼容旧字段 proxies"},
+    {"method": "GET", "path": "/api/config", "desc": "只读当前设置，不含整池"},
+    {"method": "GET", "path": "/api/pool", "desc": "只读代理池"},
+    {"method": "GET", "path": "/api/regions", "desc": "当前随机国库"},
+    {"method": "POST", "path": "/api/regions", "desc": "整表替换随机国库",
+     "body": {"地区": ["JP", "KR", "SG"]}},
+    {"method": "POST", "path": "/api/regions/add", "desc": "往随机库加国家",
+     "body": {"码": "TW"}},
+    {"method": "POST", "path": "/api/regions/del", "desc": "从随机库去掉国家",
+     "body": {"码": "TW"}},
+    {"method": "GET", "path": "/api/panel", "desc": "同机 X-UI 面板地址，无需登录"},
+    {"method": "POST", "path": "/api/set", "desc": "改设置，只改传入的字段。返回最新 config",
+     "body": {"sc_cntry": "JP", "pool_size": 30, "auto_rotate": 300}},
+    {"method": "POST", "path": "/api/fill", "desc": "按目标条数补池"},
+    {"method": "POST", "path": "/api/rotate", "desc": "丢掉拉取来的代理，按当前地区重新提一批"},
+    {"method": "POST", "path": "/api/add", "desc": "手动加代理。串=多行文本，或 proxies=数组",
+     "body": {"proxies": ["socks5://user:pass@1.2.3.4:1080"]}},
+    {"method": "POST", "path": "/api/del", "desc": "按号删一条", "body": {"id": "…"}},
+    {"method": "POST", "path": "/api/clear", "desc": "清空整池"},
+    {"method": "POST", "path": "/api/sc/setup", "desc": "写入提取源并自动开跑",
+     "body": {"provider": "auto", "key": "闪臣key", "code": "安全码", "go_key": ""}},
+    {"method": "POST", "path": "/api/sc/white", "desc": "把本机或指定 IP 加进闪臣白名单",
+     "body": {"ip": "", "备注": "xui-bridge"}},
+    {"method": "POST", "path": "/api/sc/unwhite", "desc": "从白名单删除", "body": {"id": "", "ip": ""}},
+    {"method": "POST", "path": "/api/sc/refresh", "desc": "刷新余额和白名单"},
+    {"method": "POST", "path": "/api/update", "desc": "立刻检查并更新桥代码"},
+    {"method": "GET", "path": "/api/stats", "desc": "每日流量：今日消耗 + 最近 60 天表"},
+    {"method": "POST", "path": "/api/traffic/reset", "desc": "累计流量从现在重新算（日表保留）"},
+    {"method": "POST", "path": "/api/passwd", "desc": "改管理密码", "body": {"web_pass": "新密码"}},
+    {"method": "POST", "path": "/api/login", "desc": "网页登录，种 Cookie"},
+    {"method": "POST", "path": "/api/logout", "desc": "清 Cookie"},
+)
+
+
+def 接口目录() -> dict:
+    return {
+        "ok": True,
+        "版本": 版本,
+        "文档": "/docs",
+        "文档原文": "/api/docs",
+        "鉴权": {
+            "方式": [
+                "Authorization: Bearer <web_pass>",
+                "X-Pass: <web_pass>",
+                "Cookie（网页登录后）",
+            ],
+            "说明": "机器调用用前两种。不要把密码写进 URL。",
+            "免鉴权": ["GET /", "GET /docs", "GET /login", "GET /api/panel",
+                      "GET /api/docs", "POST /api/login", "POST /api/logout", "OPTIONS /api/*"],
+        },
+        "接口": [dict(一) for 一 in 接口表],
+        "字段": {
+            "health": ["版本", "listen", "web", "健康", "总数", "供应商", "这批地区", "上次补", "上次换新"],
+            "池条目": ["号", "地址", "方案", "来源", "启用", "健康", "失败", "连接",
+                      "上行", "下行", "上行文", "下行文", "出口", "上次错误", "上次切换"],
+            "日表条目": ["日", "上行", "下行", "合计", "上行文", "下行文", "合计文"],
+            "可写": ["mode", "sticky", "fetch_url", "fetch_cmd", "fetch_scheme",
+                    "sc_base", "sc_key", "sc_protocol", "sc_cntry", "sc_state", "sc_city",
+                    "provider", "go_base", "go_key", "go_url", "go_user", "go_host",
+                    "pool_size", "fail_n", "check_interval", "check_conc", "connect_timeout",
+                    "auto_rotate", "sc_count", "sc_time", "sc_white", "go_port",
+                    "auto_update", "update_minutes", "sc_code", "go_pass", "随机国库"],
+            "出厂随机国库": list(默随机国库),
+            "国名": dict(国名表),
+        },
+    }
+
+
+def 健康视图(池子: 池) -> dict:
+    return {
+        "ok": True,
+        "版本": 版本,
+        "listen": f"{池子.设['listen']}:{池子.听口()}",
+        "web": f"{池子.设['web']}:{池子.网页口()}",
+        "健康": len(池子.健康们()),
+        "总数": len(池子.条们),
+        "供应商": 池子.当前源() or "无",
+        "这批地区": 池子.这批地区,
+        "上次补": 池子.上次补,
+        "上次换新": 池子.上次换新,
+    }
+
+
+def 池视图(池子: 池) -> dict:
+    return {
+        "ok": True,
+        "健康": len(池子.健康们()),
+        "总数": len(池子.条们),
+        "这批地区": 池子.这批地区,
+        "池": [一.快照() for 一 in 池子.条们],
+    }
+
+
+def 地区视图(池子: 池 | None = None) -> dict:
+    库 = 池子.国库() if 池子 else list(默随机国库)
+    return {
+        "ok": True,
+        "随机国库": 库,
+        "地区": [{"码": 码, "名": 国名表.get(码, 码)} for 码 in 库],
+        "名": dict(国名表),
+        "默认": list(默随机国库),
+    }
+
+
+def _请国(数据: dict) -> list[str]:
+    生 = []
+    for k in ("码", "code", "国", "codes", "地区", "随机国库"):
+        if 数据.get(k) in (None, ""):
+            continue
+        v = 数据[k]
+        if isinstance(v, list):
+            生.extend(v)
+        else:
+            生.extend(str(v).replace(",", " ").split())
+    return 洗国库(生)
+
+
+def _加行(数据: dict) -> list[str]:
+    行们: list[str] = []
+    串 = 数据.get("串")
+    if 串:
+        行们.extend(str(串).splitlines())
+    列 = 数据.get("proxies")
+    if isinstance(列, str):
+        行们.extend(列.splitlines())
+    elif isinstance(列, list):
+        for 一 in 列:
+            if 一:
+                行们.append(str(一))
+    return [x.strip() for x in 行们 if str(x).strip()]
 
 
 def _密(池子: 池) -> str:
@@ -533,17 +213,28 @@ def 已登录(头: dict[str, str], 体: dict, 密: str) -> bool:
         return False
     if _同(_cookie值(头), _令牌(密)):
         return True
-    给 = _信里密(头, 体)
+    给 = _信里密(头, 体).strip()
     return _同(给, 密)
 
 
+def _跨域() -> str:
+    return (
+        "Access-Control-Allow-Origin: *\r\n"
+        "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+        "Access-Control-Allow-Headers: Authorization, Content-Type, X-Pass\r\n"
+        "Access-Control-Max-Age: 86400\r\n"
+    )
+
+
 def _头文(码: int, 类: str, 长: int, 额外: str = "") -> bytes:
-    说 = {200: "OK", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found", 500: "ERR"}.get(码, "ERR")
+    说 = {200: "OK", 204: "No Content", 400: "Bad Request", 401: "Unauthorized",
+          403: "Forbidden", 404: "Not Found", 500: "ERR"}.get(码, "ERR")
     return (
         f"HTTP/1.1 {码} {说}\r\n"
         f"Content-Type: {类}\r\n"
         "Cache-Control: no-store\r\n"
         f"Content-Length: {长}\r\n"
+        f"{_跨域()}"
         f"{额外}"
         "Connection: close\r\n\r\n"
     ).encode("ascii")
@@ -554,9 +245,95 @@ def _json(写: asyncio.StreamWriter, 码: int, 身: dict, 额外: str = "") -> N
     写.write(_头文(码, "application/json; charset=utf-8", len(文), 额外) + 文)
 
 
+def _空(写: asyncio.StreamWriter, 码: int = 204) -> None:
+    写.write(_头文(码, "text/plain", 0))
+
+
 def _html(写: asyncio.StreamWriter, 文: str) -> None:
     体 = 文.encode("utf-8")
     写.write(_头文(200, "text/html; charset=utf-8", len(体)) + 体)
+
+
+def _裸(写: asyncio.StreamWriter, 类: str, 文: str) -> None:
+    体 = 文.encode("utf-8")
+    写.write(_头文(200, 类, len(体)) + 体)
+
+
+def _转义(s: str) -> str:
+    return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _md页(源: str) -> str:
+    """只认标题、表格、围栏代码、列表。别的当段落，避免引第三方库。"""
+    块: list[str] = []
+    行们 = 源.replace("\r\n", "\n").split("\n")
+    i, n = 0, len(行们)
+    while i < n:
+        行 = 行们[i]
+        if 行.startswith("```"):
+            j = i + 1
+            while j < n and not 行们[j].startswith("```"):
+                j += 1
+            块.append("<pre><code>" + _转义("\n".join(行们[i + 1:j])) + "</code></pre>")
+            i = j + 1
+            continue
+        if 行.startswith("#"):
+            级 = min(3, len(行) - len(行.lstrip("#")))
+            块.append(f"<h{级}>{_转义(行.lstrip('#').strip())}</h{级}>")
+            i += 1
+            continue
+        if 行.startswith("|") and i + 1 < n and set(行们[i + 1].replace("|", "").replace("-", "").replace(":", "").strip()) <= {"", " "}:
+            表 = []
+            while i < n and 行们[i].startswith("|"):
+                格 = [c.strip() for c in 行们[i].strip("|").split("|")]
+                if not all(set(x.replace("-", "").replace(":", "")) <= {""} for x in 格):
+                    表.append(格)
+                i += 1
+            if 表:
+                头, *身 = 表
+                h = "<table><thead><tr>" + "".join(f"<th>{_转义(x)}</th>" for x in 头) + "</tr></thead><tbody>"
+                for 一 in 身:
+                    h += "<tr>" + "".join(f"<td>{_转义(x)}</td>" for x in 一) + "</tr>"
+                块.append(h + "</tbody></table>")
+            continue
+        if 行.startswith("- ") or 行.startswith("* "):
+            项 = []
+            while i < n and (行们[i].startswith("- ") or 行们[i].startswith("* ")):
+                项.append(行们[i][2:])
+                i += 1
+            块.append("<ul>" + "".join(f"<li>{_转义(x)}</li>" for x in 项) + "</ul>")
+            continue
+        if 行.strip() == "---":
+            块.append("<hr>")
+            i += 1
+            continue
+        if 行.strip():
+            块.append("<p>" + _转义(行) + "</p>")
+        i += 1
+    身 = "\n".join(块)
+    return (
+        "<!DOCTYPE html><html lang=zh-CN><head><meta charset=utf-8>"
+        "<meta name=viewport content='width=device-width, initial-scale=1'>"
+        "<title>桥对接文档</title><style>"
+        "body{margin:0;background:#0b1016;color:#e7eef6;"
+        "font:15px/1.55 'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}"
+        "main{max-width:980px;margin:0 auto;padding:28px 22px 72px}"
+        "h1{font-size:28px;margin:0 0 8px} h2{margin:28px 0 10px;font-size:20px}"
+        "h3{margin:22px 0 8px;font-size:16px}"
+        "p,li{color:#c6d4e4} a{color:#3d9cf0}"
+        "table{width:100%;border-collapse:collapse;margin:10px 0 18px;font-size:13px}"
+        "th,td{border:1px solid #243041;padding:7px 8px;text-align:left;vertical-align:top}"
+        "th{color:#8b9bb0;font-weight:600}"
+        "pre{background:#0d141c;border:1px solid #243041;border-radius:8px;"
+        "padding:12px;overflow:auto;font:12px/1.5 ui-monospace,Consolas,monospace}"
+        "hr{border:0;border-top:1px solid #243041;margin:22px 0}"
+        ".top{display:flex;gap:12px;align-items:center;margin-bottom:18px}"
+        ".top a{color:#e7eef6;text-decoration:none;border:1px solid #243041;"
+        "border-radius:8px;padding:6px 10px}"
+        "</style></head><body><main>"
+        "<div class=top><a href=/>控制台</a><a href=/api/docs>原文 Markdown</a></div>"
+        f"{身}</main></body></html>"
+    )
 
 
 def _置饼(密: str) -> str:
@@ -687,17 +464,39 @@ async def _读请求(读: asyncio.StreamReader) -> tuple[str, str, bytes, dict[s
     return 法, 路, 体[:长], 头们
 
 
+def _身(体: bytes) -> dict:
+    if not 体:
+        return {}
+    try:
+        数据 = json.loads(体.decode("utf-8"))
+        return 数据 if isinstance(数据, dict) else {}
+    except Exception:
+        q = parse_qs(体.decode("utf-8", "replace"))
+        return {k: (v[0] if v else "") for k, v in q.items()}
+
+
 async def 处理管理(读, 写, 池子: 池) -> None:
     try:
         法, 路, 体, 头 = await _读请求(读)
-        路 = 路.split("?", 1)[0]
+        路 = 路.split("?", 1)[0].rstrip("/") or "/"
         数据 = _身(体)
         密 = _密(池子)
 
-        if 法 == "GET" and 路 == "/api/panel":
+        if 法 == "OPTIONS" and 路.startswith("/api"):
+            _空(写, 204)
+        elif 法 == "GET" and 路 == "/api/panel":
             _json(写, 200, {"ok": True, "url": 面板地址(头)})
+        elif 法 == "GET" and 路 in ("/", "/index.html"):
+            # 页面本身不设门，进不进得去看接口。避免 Cookie 种不上时永远停在登录页。
+            _html(写, 页)
+        elif 法 == "GET" and 路 == "/login":
+            _html(写, 登页)
+        elif 法 == "GET" and 路 == "/docs":
+            _html(写, _md页(对接文))
+        elif 法 == "GET" and 路 == "/api/docs":
+            _裸(写, "text/markdown; charset=utf-8", 对接文)
         elif 法 == "POST" and 路 == "/api/login":
-            给 = str(数据.get("pass") or "")
+            给 = str(数据.get("pass") or "").strip()
             if _同(给, 密):
                 _json(写, 200, {"ok": True}, _置饼(密))
             else:
@@ -706,34 +505,73 @@ async def 处理管理(读, 写, 池子: 池) -> None:
         elif 法 == "POST" and 路 == "/api/logout":
             _json(写, 200, {"ok": True}, _清饼())
         elif not 已登录(头, 数据, 密):
-            if 法 == "GET" and 路 in ("/", "/index.html"):
-                _html(写, 登页)
-            else:
-                _json(写, 401, {"ok": False, "err": "要密码。网页先登录，API 带 X-Pass 或 Authorization: Bearer"})
-        elif 法 == "GET" and 路 in ("/", "/index.html"):
-            _html(写, 页)
+            _json(写, 401, {"ok": False, "err": "要密码。网页先登录，API 带 X-Pass 或 Authorization: Bearer"})
+        elif 法 == "GET" and 路 == "/api":
+            _json(写, 200, 接口目录())
+        elif 法 == "GET" and 路 == "/api/health":
+            _json(写, 200, 健康视图(池子))
         elif 法 == "GET" and 路 == "/api/status":
             身 = 池子.总览()
             身["ok"] = True
             身["panel_url"] = 面板地址(头)
             身["proxies"] = 身.get("池") or []
             _json(写, 200, 身)
+        elif 法 == "GET" and 路 == "/api/config":
+            身 = 池子.配置快照()
+            身["ok"] = True
+            _json(写, 200, 身)
+        elif 法 == "GET" and 路 == "/api/pool":
+            _json(写, 200, 池视图(池子))
+        elif 法 == "GET" and 路 == "/api/regions":
+            _json(写, 200, 地区视图(池子))
+        elif 法 == "POST" and 路 == "/api/regions":
+            列 = _请国(数据)
+            if not 列:
+                _json(写, 400, {"ok": False, "err": "没有有效的国家码"})
+            else:
+                await 池子.改设({"随机国库": 列})
+                身 = 地区视图(池子)
+                身["msg"] = "随机国库已换成 " + "、".join(列)
+                _json(写, 200, 身)
+        elif 法 == "POST" and 路 == "/api/regions/add":
+            列 = _请国(数据)
+            if not 列:
+                _json(写, 400, {"ok": False, "err": "没有有效的国家码，例如 JP"})
+            else:
+                现, 新 = await 池子.加国(列)
+                身 = 地区视图(池子)
+                身["msg"] = ("已加入 " + "、".join(新)) if 新 else "这些国家本来就在库里"
+                身["新加"] = 新
+                _json(写, 200, 身)
+        elif 法 == "POST" and 路 == "/api/regions/del":
+            列 = _请国(数据)
+            if not 列:
+                _json(写, 400, {"ok": False, "err": "没有有效的国家码"})
+            else:
+                现, 删, 说 = await 池子.删国(列)
+                if 说:
+                    _json(写, 400, {**地区视图(池子), "ok": False, "err": 说})
+                else:
+                    身 = 地区视图(池子)
+                    身["msg"] = ("已去掉 " + "、".join(删)) if 删 else "库里没有这些国家"
+                    身["删除"] = 删
+                    _json(写, 200, 身)
         elif 法 == "POST" and 路 == "/api/add":
-            串 = str(数据.get("串") or "")
             成, 错们 = 0, []
-            for 行 in 串.splitlines():
-                行 = 行.strip()
-                if not 行:
-                    continue
+            for 行 in _加行(数据):
                 try:
                     await 池子.加(行, 来源="手加")
                     成 += 1
                 except ValueError as 错:
                     错们.append(str(错))
-            _json(写, 200, {"ok": True, "n": 成, "err": "；".join(错们)})
+            _json(写, 200, {"ok": True, "n": 成, "err": "；".join(错们), "pool": 池视图(池子)})
         elif 法 == "POST" and 路 == "/api/del":
-            ok = await 池子.删(str(数据.get("号") or 数据.get("id") or ""))
-            _json(写, 200, {"ok": ok})
+            号 = str(数据.get("号") or 数据.get("id") or "")
+            if not 号:
+                _json(写, 400, {"ok": False, "err": "缺少 id"})
+            else:
+                ok = await 池子.删(号)
+                _json(写, 200, {"ok": ok, "id": 号, "pool": 池视图(池子)})
         elif 法 == "POST" and 路 == "/api/clear":
             n = await 池子.清空()
             _json(写, 200, {"ok": True, "n": n})
@@ -741,30 +579,43 @@ async def 处理管理(读, 写, 池子: 池) -> None:
             数据.pop("pass", None)
             数据.pop("web_pass", None)
             await 池子.改设(数据)
-            _json(写, 200, {"ok": True})
+            身 = 池子.配置快照()
+            身["ok"] = True
+            身["msg"] = "已保存"
+            _json(写, 200, 身)
+        elif 法 == "POST" and 路 == "/api/passwd":
+            新 = str(数据.get("web_pass") or 数据.get("新") or "").strip()
+            if len(新) < 4:
+                _json(写, 400, {"ok": False, "err": "新密码至少 4 位"})
+            else:
+                await 池子.改设({"web_pass": 新})
+                _json(写, 200, {"ok": True, "msg": "密码已改，下次请求用新密码"}, _置饼(新))
         elif 法 == "POST" and 路 == "/api/fill":
             说 = await 池子.补齐()
-            _json(写, 200, {"ok": True, "msg": 说})
+            _json(写, 200, {"ok": True, "msg": 说, "health": 健康视图(池子)})
         elif 法 == "POST" and 路 == "/api/rotate":
             说 = await 池子.换新()
-            _json(写, 200, {"ok": True, "msg": 说})
+            _json(写, 200, {"ok": True, "msg": 说, "health": 健康视图(池子)})
         elif 法 == "POST" and 路 == "/api/update":
             from 更新 import 更新一次
-            # 真更新了会重启服务，这条响应能不能送达看运气，所以先回再重启
             说 = await 更新一次(池子)
             _json(写, 200, {"ok": True, "msg": 说})
+        elif 法 == "GET" and 路 == "/api/stats":
+            身 = 池子.日统计()
+            身["ok"] = True
+            _json(写, 200, 身)
         elif 法 == "POST" and 路 == "/api/traffic/reset":
             _json(写, 200, {"ok": True, "msg": await 池子.清流量()})
         elif 法 == "POST" and 路 == "/api/sc/setup":
             步 = await 池子.一键开跑(
-                str(数据.get("key") or "").strip(),
-                str(数据.get("code") or "").strip(),
+                str(数据.get("key") or 数据.get("sc_key") or "").strip(),
+                str(数据.get("code") or 数据.get("sc_code") or "").strip(),
                 str(数据.get("provider") or "").strip(),
                 str(数据.get("go_key") or "").strip(),
                 str(数据.get("go_user") or "").strip(),
                 str(数据.get("go_pass") or "").strip(),
             )
-            _json(写, 200, {"ok": True, "步": 步})
+            _json(写, 200, {"ok": True, "步": 步, "msg": "\n".join(步), "config": 池子.配置快照()})
         elif 法 == "POST" and 路 == "/api/sc/white":
             好, 说 = await asyncio.to_thread(
                 池子.加白名单, str(数据.get("ip") or ""),
@@ -795,17 +646,6 @@ async def 处理管理(读, 写, 池子: 池) -> None:
             await 写.wait_closed()
         except Exception:
             pass
-
-
-def _身(体: bytes) -> dict:
-    if not 体:
-        return {}
-    try:
-        数据 = json.loads(体.decode("utf-8"))
-        return 数据 if isinstance(数据, dict) else {}
-    except Exception:
-        q = parse_qs(体.decode("utf-8", "replace"))
-        return {k: (v[0] if v else "") for k, v in q.items()}
 
 
 async def 开网页(池子: 池) -> asyncio.AbstractServer:

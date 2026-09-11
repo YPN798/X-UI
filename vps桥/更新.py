@@ -30,6 +30,7 @@ from urllib.request import Request, urlopen
 要更的 = (
     "主程序.py", "解析.py", "池.py", "转发.py", "网页.py",
     "更新.py", "写入分流.py", "最低消耗.json",
+    "面板.html", "登录.html", "对接.md",
 )
 装在 = Path("/opt/xui-bridge")
 服务名 = "xui-bridge"
@@ -69,6 +70,13 @@ def _校验(名: str, 数据: bytes) -> None:
         ast.parse(文)  # 语法过不了多半是下到了错误页
     elif 名.endswith(".json"):
         json.loads(文)
+    elif 名.endswith(".html"):
+        低 = 文.lstrip().lower()
+        if "<html" not in 低 and "<!doctype" not in 低:
+            raise ValueError(f"{名} 不像 HTML")
+    elif 名.endswith(".md"):
+        if "鉴权" not in 文 and "api" not in 文.lower():
+            raise ValueError(f"{名} 不像对接文档")
 
 
 def 拉一轮(底: str) -> tuple[bool, str]:

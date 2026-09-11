@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>桥控制台</title>
+<style>
+:root{
+  --bg:#0b1016; --panel:#10171f; --card:#151d27; --line:#243041; --line2:#314155;
+  --text:#e7eef6; --muted:#8b9bb0; --acc:#3d9cf0; --acc2:#16324d;
+  --ok:#3fb950; --ok2:#16341f; --bad:#f85149; --bad2:#3a1518; --warn:#d4a72c;
+}
+*{box-sizing:border-box}
+html,body{margin:0; background:var(--bg); color:var(--text);
+  font:14px/1.45 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+a{color:var(--acc); text-decoration:none}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer}
+button:disabled{opacity:.5; cursor:default}
+.top{
+  height:56px; display:flex; align-items:center; gap:16px; padding:0 20px;
+  border-bottom:1px solid var(--line); background:rgba(16,23,31,.92);
+  position:sticky; top:0; z-index:20; backdrop-filter:blur(10px);
+}
+.brand{display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:.02em}
+.mark{width:28px; height:28px; border-radius:8px; background:var(--acc2); color:var(--acc);
+  display:grid; place-items:center; font-size:13px}
+.chip{display:inline-flex; align-items:center; gap:6px; padding:4px 9px; border-radius:999px;
+  border:1px solid var(--line); color:var(--muted); font-size:12px; background:var(--panel)}
+.chip b{color:var(--text); font-weight:650}
+.dot{width:7px; height:7px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 3px rgba(63,185,80,.15)}
+.dot.off{background:var(--bad); box-shadow:0 0 0 3px rgba(248,81,73,.15)}
+.spacer{flex:1}
+.top a.btn, .top button{
+  border:1px solid var(--line); background:transparent; color:var(--text);
+  border-radius:8px; padding:6px 10px; font-size:13px;
+}
+.top button.pri{background:var(--acc); border-color:transparent; color:#061018; font-weight:650}
+main{max-width:1180px; margin:0 auto; padding:20px 20px 64px}
+.kpis{display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-bottom:16px}
+.kpi{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 14px 12px}
+.kpi .k{color:var(--muted); font-size:12px}
+.kpi .v{margin-top:6px; font-size:22px; font-weight:700; letter-spacing:-.03em}
+.kpi .s{margin-top:4px; color:var(--muted); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.tabs{display:flex; gap:2px; border-bottom:1px solid var(--line); margin:8px 0 16px; overflow:auto}
+.tabs button{
+  border:0; background:transparent; color:var(--muted); padding:10px 14px;
+  border-bottom:2px solid transparent; font-weight:650;
+}
+.tabs button.on{color:var(--text); border-bottom-color:var(--acc)}
+.card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin:0 0 14px}
+.card h2{margin:0 0 4px; font-size:15px}
+.card .desc{margin:0 0 14px; color:var(--muted); font-size:13px}
+.grid{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+.kv{display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid var(--line)}
+.kv:last-child{border-bottom:0}
+.kv span{color:var(--muted)}
+.kv b{font-weight:650; text-align:right}
+.form{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px}
+.form.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+label.f{display:flex; flex-direction:column; gap:6px; color:var(--muted); font-size:12px}
+label.f.wide{grid-column:1/-1}
+input,select,textarea{
+  background:#0d141c; color:var(--text); border:1px solid var(--line); border-radius:8px;
+  padding:8px 10px; outline:none; min-width:0;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--acc)}
+textarea{width:100%; min-height:90px; resize:vertical}
+.actions{display:flex; flex-wrap:wrap; gap:8px; margin-top:14px}
+.btn{
+  border:1px solid var(--line); background:#1b2531; color:var(--text);
+  border-radius:8px; padding:8px 12px;
+}
+.btn.pri{background:var(--acc); border-color:transparent; color:#061018; font-weight:650}
+.btn.ok{background:var(--ok2); border-color:#245c32; color:#7ee787}
+.btn.bad{background:var(--bad2); border-color:#6e2228; color:#ff9b96}
+.btn.ghost{background:transparent}
+table{width:100%; border-collapse:collapse}
+th,td{text-align:left; padding:10px 8px; border-bottom:1px solid var(--line); font-size:13px; vertical-align:middle}
+th{color:var(--muted); font-weight:600; font-size:12px}
+.pill{display:inline-block; padding:1px 8px; border-radius:999px; font-size:12px; border:1px solid var(--line)}
+.pill.ok{background:var(--ok2); border-color:#245c32; color:#7ee787}
+.pill.bad{background:var(--bad2); border-color:#6e2228; color:#ff9b96}
+.pill.mute{color:var(--muted)}
+.mono{font-family:ui-monospace,Consolas,monospace; font-size:12px}
+.rowbar{display:flex; gap:8px; align-items:center; margin-bottom:10px}
+.rowbar input{flex:1}
+.empty{padding:28px 8px; text-align:center; color:var(--muted)}
+.toast{
+  position:fixed; right:18px; bottom:18px; max-width:420px; z-index:30;
+  background:#15202b; border:1px solid var(--line2); border-left:3px solid var(--acc);
+  border-radius:10px; padding:10px 12px; color:var(--text); white-space:pre-wrap;
+  opacity:0; transform:translateY(8px); pointer-events:none; transition:.18s ease;
+}
+.toast.show{opacity:1; transform:none}
+.toast.bad{border-left-color:var(--bad)}
+pre.api{
+  margin:0; padding:12px; background:#0d141c; border:1px solid var(--line); border-radius:8px;
+  overflow:auto; font:12px/1.5 ui-monospace,Consolas,monospace; color:#c6d4e4;
+}
+.api-item{padding:12px 0; border-bottom:1px solid var(--line)}
+.api-item:last-child{border-bottom:0}
+.meth{display:inline-block; width:52px; font:700 11px ui-monospace,Consolas,monospace}
+.meth.GET{color:#7ee787} .meth.POST{color:#79c0ff}
+.hide{display:none}
+code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d141c;
+  padding:1px 6px; border-radius:4px; border:1px solid var(--line)}
+.muted{color:var(--muted)}
+.tags{display:flex; flex-wrap:wrap; gap:8px; margin:4px 0 12px}
+.tag{display:inline-flex; align-items:center; gap:6px; padding:5px 8px 5px 10px;
+  border:1px solid var(--line); border-radius:999px; background:#0d141c; font-size:13px}
+.tag button{border:0; background:transparent; color:var(--muted); padding:0 2px; line-height:1; font-size:16px}
+.tag button:hover{color:var(--bad)}
+@media (max-width:980px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .form,.form.two,.grid{grid-template-columns:1fr}
+}
+.mask{
+  display:none; position:fixed; inset:0; z-index:40; align-items:center; justify-content:center;
+  background:rgba(7,11,16,.72); backdrop-filter:blur(8px); padding:24px;
+}
+.mask.on{display:flex}
+.login{
+  width:min(400px,100%); background:var(--card); border:1px solid var(--line);
+  border-radius:16px; padding:26px 26px 22px; box-shadow:0 24px 80px rgba(0,0,0,.4);
+}
+.login h1{margin:0; font-size:18px}
+.login p{margin:6px 0 0; color:var(--muted); font-size:13px}
+.login label{display:block; margin:18px 0 8px; color:var(--muted); font-size:12px}
+.login input{width:100%}
+.login .err{min-height:1.3em; margin-top:10px; color:var(--bad); font-size:13px}
+</style>
+</head>
+<body>
+<div class="mask on" id="门">
+  <form class="login" id="登">
+    <div class="brand"><div class="mark">桥</div><div><h1>桥控制台</h1><p>输入管理密码进入</p></div></div>
+    <label>管理密码</label>
+    <input name="pass" type="password" autocomplete="current-password" autofocus placeholder="web_pass">
+    <div class="actions"><button class="btn pri" type="submit" id="进" style="width:100%">进入控制台</button></div>
+    <div class="err" id="错"></div>
+  </form>
+</div>
+<header class="top">
+  <div class="brand"><div class="mark">桥</div>桥控制台</div>
+  <span class="chip"><i class="dot" id="活点"></i><span id="活文">连接中</span></span>
+  <span class="chip">SOCKS <b id="顶听">—</b></span>
+  <span class="chip">版本 <b id="顶版">—</b></span>
+  <div class="spacer"></div>
+  <a class="btn" href="/docs" target="_blank" rel="noopener">对接文档</a>
+  <a class="btn hide" id="去面板" target="_blank" rel="noopener">X-UI 面板</a>
+  <button class="ghost btn" id="退">退出</button>
+</header>
+<main>
+  <section class="kpis">
+    <div class="kpi"><div class="k">健康代理</div><div class="v" id="k健康">—</div><div class="s" id="k健康说">等待状态</div></div>
+    <div class="kpi"><div class="k">今日消耗</div><div class="v" id="k流量">—</div><div class="s" id="k流量说">按日统计</div></div>
+    <div class="kpi"><div class="k">剩余额度</div><div class="v" id="k余额">—</div><div class="s" id="k余额说">提取源</div></div>
+    <div class="kpi"><div class="k">当前地区</div><div class="v" id="k地区">—</div><div class="s" id="k地区说">出口分布</div></div>
+    <div class="kpi"><div class="k">下次换新</div><div class="v" id="k换">—</div><div class="s" id="k换说">自动换新</div></div>
+  </section>
+  <nav class="tabs" id="页签">
+    <button data-tab="概览" class="on">概览</button>
+    <button data-tab="代理池">代理池</button>
+    <button data-tab="提取源">提取源</button>
+    <button data-tab="设置">设置</button>
+    <button data-tab="API">API</button>
+  </nav>
+
+  <section id="页-概览">
+    <div class="grid">
+      <div class="card">
+        <h2>运行状态</h2>
+        <p class="desc">Xray 只连本机 SOCKS。改池不用重载面板。</p>
+        <div id="概览左"></div>
+      </div>
+      <div class="card">
+        <h2>最近动作</h2>
+        <p class="desc">换新、补池、验活、自动更新。</p>
+        <div id="概览右"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>每日消耗</h2>
+      <p class="desc">跨零点自动换一天。换新、重启不清零。最多留 60 天。</p>
+      <table>
+        <thead><tr><th>日期</th><th>上行</th><th>下行</th><th>合计</th></tr></thead>
+        <tbody id="日表"></tbody>
+      </table>
+      <div class="empty hide" id="日空">今天还没跑过流量。</div>
+    </div>
+  </section>
+
+  <section id="页-代理池" class="hide">
+    <div class="card">
+      <div class="rowbar">
+        <input id="池滤" placeholder="过滤地址 / 出口 / 来源">
+        <button class="btn" id="补">立刻补池</button>
+        <button class="btn" id="换">立即换新</button>
+        <button class="btn bad" id="清空">清空池</button>
+      </div>
+      <table>
+        <thead><tr><th>地址</th><th>状态</th><th>出口</th><th>连接</th><th>上行</th><th>下行</th><th>来源</th><th>说明</th><th></th></tr></thead>
+        <tbody id="表"></tbody>
+      </table>
+      <div class="empty hide" id="池空">池是空的。先到「提取源」开跑，或在设置里手动加入。</div>
+    </div>
+  </section>
+
+  <section id="页-提取源" class="hide">
+    <div class="card">
+      <h2>提取源</h2>
+      <p class="desc">闪臣或 IPIPGO，有哪个填哪个。两家都填时按「用哪家」；自动则谁能提用谁。每批同一国。</p>
+      <form id="闪" class="form">
+        <label class="f">用哪家
+          <select name="provider">
+            <option value="auto">自动</option>
+            <option value="shanchen">闪臣</option>
+            <option value="ipipgo">IPIPGO</option>
+          </select>
+        </label>
+        <label class="f wide">闪臣 API Key<input name="sc_key" placeholder="闪臣个人中心"></label>
+        <label class="f">闪臣安全码
+          <input name="sc_code" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')">
+        </label>
+        <label class="f wide">IPIPGO Key 或提取链接
+          <input name="go_key" placeholder="动态标准后台的 key，或整段 https://api.ipipgo.com/getip?...">
+        </label>
+        <label class="f">IPIPGO 账号<input name="go_user" placeholder="账密提取才要"></label>
+        <label class="f">IPIPGO 密码
+          <input name="go_pass" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" placeholder="已保存则留空">
+        </label>
+        <div class="actions" style="grid-column:1/-1">
+          <button class="btn pri" type="submit" id="开跑">保存并自动开跑</button>
+          <button class="btn" type="button" id="加白">把本机加进白名单</button>
+          <button class="btn" type="button" id="刷闪">刷新余额和白名单</button>
+        </div>
+      </form>
+    </div>
+    <div class="card" id="闪态"></div>
+  </section>
+
+  <section id="页-设置" class="hide">
+    <div class="card">
+      <h2>提取与地区</h2>
+      <p class="desc">国家留空则每批从下面「随机地区」里抽一个。钉死某国则不随机。</p>
+      <form id="设" class="form">
+        <label class="f">每次提几条 <input name="sc_count" type="number" min="1" max="500"></label>
+        <label class="f">IP 保持多久
+          <select name="sc_time">
+            <option value="0">5-30 分钟（推荐）</option>
+            <option value="2">1-6 小时</option>
+            <option value="1">每请求一换（池里只会有 1 条）</option>
+          </select>
+        </label>
+        <label class="f">套餐协议
+          <select name="sc_protocol"><option value="http">http</option><option value="s5">socks5</option></select>
+        </label>
+        <label class="f">国家
+          <select name="sc_cntry" id="国选">
+            <option value="">随机（用下面的随机库）</option>
+          </select>
+        </label>
+        <label class="f">州/省 <input name="sc_state" placeholder="留空=整国"></label>
+        <label class="f">城市 <input name="sc_city" placeholder="留空=整国"></label>
+        <label class="f">撞白名单自动加
+          <select name="sc_white"><option value="1">开</option><option value="0">关</option></select>
+        </label>
+        <label class="f">分发
+          <select name="mode">
+            <option value="round_robin">按连接轮询</option>
+            <option value="least_conn">谁连接少走谁</option>
+          </select>
+        </label>
+        <label class="f">粘住
+          <select name="sticky"><option value="">关</option><option value="host">按目标主机</option></select>
+        </label>
+        <label class="f">池目标条数 <input name="pool_size" type="number" min="0" max="500"></label>
+        <label class="f">失败几次摘除 <input name="fail_n" type="number" min="1" max="20"></label>
+        <label class="f">验活间隔秒 <input name="check_interval" type="number" min="8" max="600"></label>
+        <label class="f">同时验活条数 <input name="check_conc" type="number" min="1" max="64"></label>
+        <label class="f">自动换新秒 <input name="auto_rotate" type="number" min="0" max="86400" placeholder="0=关"></label>
+        <label class="f">拉取协议
+          <select name="fetch_scheme">
+            <option value="">按接口返回</option>
+            <option value="socks5">强制 socks5</option>
+            <option value="http">强制 http</option>
+          </select>
+        </label>
+        <label class="f">自动更新
+          <select name="auto_update"><option value="1">开</option><option value="0">关</option></select>
+        </label>
+        <label class="f">多少分钟查一次 <input name="update_minutes" type="number" min="1" max="10080"></label>
+        <label class="f wide">别家提取接口 fetch_url<span id="盖"></span>
+          <input name="fetch_url" placeholder="用闪臣 / IPIPGO 就不用填">
+        </label>
+        <label class="f wide">fetch_cmd <input name="fetch_cmd" placeholder="命令 stdout，一行一条"></label>
+        <div class="actions" style="grid-column:1/-1">
+          <button class="btn pri" type="submit" id="存高级">保存设置</button>
+          <button class="btn" type="button" id="更新">现在检查更新</button>
+          <button class="btn" type="button" id="清量">流量计数清零</button>
+        </div>
+      </form>
+    </div>
+    <div class="card">
+      <h2>随机地区</h2>
+      <p class="desc">三格国家留空时，每批从这里抽一个国家。可随时加减，至少留一个。</p>
+      <div class="tags" id="国库"></div>
+      <div class="rowbar">
+        <input id="新国" placeholder="国家码，如 TW、US、DE" maxlength="8" style="text-transform:uppercase">
+        <button class="btn pri" type="button" id="加国">加入随机库</button>
+        <button class="btn" type="button" id="复国">恢复出厂 9 国</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>手动加代理</h2>
+      <p class="desc">socks5://用户:密码@主机:端口，或 IP|端口|用户|密码，可多行。</p>
+      <form id="加">
+        <label class="f wide"><textarea name="串" placeholder="socks5://user:pass@1.2.3.4:1080"></textarea></label>
+        <div class="actions">
+          <button class="btn pri" type="submit" id="手加">加入池</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section id="页-API" class="hide">
+    <div class="card">
+      <h2>机器调用</h2>
+      <p class="desc">字段、示例、错误码见 <a href="/docs" target="_blank" rel="noopener">对接文档</a>。机器读 <code>GET /api</code> 或 <code>GET /api/docs</code>。</p>
+      <pre class="api" id="鉴权例"></pre>
+      <div class="actions">
+        <button class="btn" type="button" id="复制例">复制探活命令</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>接口一览</h2>
+      <p class="desc">来自 <code>GET /api</code>，和服务器读到的一样。</p>
+      <div id="接口表"></div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+const 脏 = {};
+let 最新 = null;
+let 国表 = [];
+const 令键 = "桥令";
+function 取令(){ try{ return sessionStorage.getItem(令键) || ""; }catch(e){ return ""; } }
+function 存令(v){ try{ v ? sessionStorage.setItem(令键, v) : sessionStorage.removeItem(令键); }catch(e){} }
+function 开门(开, 话){
+  document.getElementById("门").classList.toggle("on", !!开);
+  if(话) document.getElementById("错").textContent=话;
+}
+document.addEventListener("input", e=>{
+  const f = e.target && e.target.form;
+  if(f && f.id && f.id!=="登") 脏[f.id] = 1;
+}, true);
+
+async function api(path, body){
+  const o = {method: body ? "POST" : "GET", credentials:"include", headers:{}};
+  const 令 = 取令();
+  if(令) o.headers["X-Pass"] = 令;
+  if(body){ o.headers["Content-Type"]="application/json"; o.body=JSON.stringify(body); }
+  let r;
+  try{ r = await fetch(path, o); }
+  catch(e){ throw new Error("连不上桥："+(e.message||e)); }
+  if(r.status===401){ 开门(true); throw new Error("要密码"); }
+  const t = await r.text();
+  let j; try{ j=JSON.parse(t); }catch(e){ throw new Error(t||r.status); }
+  if(!r.ok || j.ok===false) throw new Error(j.err||t);
+  return j;
+}
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function 塞(f,名,值){
+  if(!f || 脏[f.id]) return;
+  const el = f[名];
+  if(!el) return;
+  el.value = 值;
+}
+function 吐(文, 错){
+  const n=document.getElementById("toast");
+  n.textContent=文;
+  n.className="toast show"+(错?" bad":"");
+  clearTimeout(吐._t);
+  吐._t=setTimeout(()=>n.classList.remove("show"), 4500);
+}
+function 切页(名){
+  document.querySelectorAll("#页签 button").forEach(b=>b.classList.toggle("on", b.dataset.tab===名));
+  ["概览","代理池","提取源","设置","API"].forEach(p=>{
+    document.getElementById("页-"+p).classList.toggle("hide", p!==名);
+  });
+}
+document.getElementById("页签").onclick=e=>{
+  const b=e.target.closest("button[data-tab]");
+  if(b) 切页(b.dataset.tab);
+};
+function 分布(列){
+  const 计={}; let 没探=0;
+  (列||[]).forEach(p=>{
+    const 出=String(p.出口||"");
+    if(!出){ 没探++; return; }
+    const 国=出.startsWith("?")?"探不到":(出.split(" ")[0]||"?");
+    计[国]=(计[国]||0)+1;
+  });
+  const 项=Object.keys(计).sort((a,b)=>计[b]-计[a]).map(k=>k+" "+计[k]);
+  if(没探) 项.push("待探 "+没探);
+  return 项.join(" · ") || "还没探到";
+}
+function 行(左,右){ return '<div class="kv"><span>'+左+"</span><b>"+右+"</b></div>"; }
+function 填闪(s){
+  const 盒=document.getElementById("闪态");
+  const 盖=document.getElementById("盖");
+  if(!s || !s.开){
+    盒.innerHTML="<p class=desc>还没填闪臣或 IPIPGO，提取没启用。</p>";
+    盖.textContent="";
+    return;
+  }
+  盖.textContent="（上面两家已接管，这里填了也不生效）";
+  const 白=s.白名单||[];
+  const 余=s.余额?("<b>"+esc(s.余额)+"</b>"):"<span class=muted>还没查到</span>";
+  const 本=s.本机IP?esc(s.本机IP):"没问到";
+  const 态=s.本机IP?(s.已加白?"<span class='pill ok'>已在白名单</span>"
+                            :"<span class='pill bad'>不在白名单</span>")
+                  :"<span class='pill mute'>白名单未知</span>";
+  let h="<h2>源状态</h2><p class=desc>余额、本机出口、白名单。提取被 1004 拒就是没加白。</p>";
+  h+=行("剩余流量", 余+(s.余额说?" · "+esc(s.余额说):""));
+  h+=行("本机出口 IP", 本+" "+态);
+  h+=行("提取地址", "<span class=mono>"+esc(s.提取地址||"—")+"</span>");
+  if(s.白名单说) h+="<p class=desc>"+esc(s.白名单说)+"</p>";
+  if(!s.有码) h+="<p class=desc>没存安全码，加删白名单都用不了。</p>";
+  if(白.length){
+    h+="<table style=margin-top:10px><thead><tr><th>白名单 IP</th><th>备注</th><th></th></tr></thead><tbody id=白表></tbody></table>";
+  }else h+="<p class=desc>白名单是空的。</p>";
+  盒.innerHTML=h;
+  const tb=document.getElementById("白表");
+  if(!tb) return;
+  白.forEach(w=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML="<td class=mono></td><td></td><td></td>";
+    tr.cells[0].textContent=w.ip||"";
+    tr.cells[1].textContent=w.备注||"";
+    const b=document.createElement("button");
+    b.className="btn bad"; b.textContent="删除";
+    b.onclick=async()=>{
+      if(!confirm("从闪臣白名单删掉 "+(w.ip||w.id)+"？")) return;
+      try{ await api("/api/sc/unwhite",{id:w.id,ip:w.ip}); 吐("已删除"); }
+      catch(e){ 吐(e.message,1); }
+      刷();
+    };
+    tr.cells[2].appendChild(b);
+    tb.appendChild(tr);
+  });
+}
+function 填国(d){
+  const sel=document.getElementById("国选");
+  if(!sel || 脏["设"]){ 填国库(); return; }
+  const 现=d.sc_cntry||"";
+  const 有=new Set((国表||[]).map(x=>x.码));
+  sel.innerHTML='<option value="">随机（用下面的随机库）</option>';
+  (国表||[]).forEach(x=>{
+    const o=document.createElement("option");
+    o.value=x.码; o.textContent=x.码+" · "+x.名;
+    sel.appendChild(o);
+  });
+  if(现 && !有.has(现)){
+    const o=document.createElement("option");
+    o.value=现; o.textContent=现+"（当前）";
+    sel.appendChild(o);
+  }
+  sel.value=现;
+  填国库();
+}
+function 填国库(){
+  const 盒=document.getElementById("国库");
+  if(!盒) return;
+  盒.innerHTML="";
+  (国表||[]).forEach(x=>{
+    const s=document.createElement("span");
+    s.className="tag";
+    s.innerHTML="<b>"+esc(x.码)+"</b> "+esc(x.名)+" <button type=button title=去掉>×</button>";
+    s.querySelector("button").onclick=()=>改国("del", x.码);
+    盒.appendChild(s);
+  });
+  if(!(国表||[]).length) 盒.innerHTML="<span class=muted>随机库是空的</span>";
+}
+async function 改国(种, 码){
+  const 路 = 种==="add" ? "/api/regions/add" : 种==="reset" ? "/api/regions" : "/api/regions/del";
+  try{
+    const j = await api(路, 种==="reset" ? {地区:["JP","KR","SG","TH","VN","MY","PH","ID","BR"]} : {码});
+    国表 = j.地区 || [];
+    填国库();
+    if(最新){ 最新.随机国库 = j.随机国库; 填国(最新); }
+    吐(j.msg || "已改随机库");
+  }catch(e){ 吐(e.message,1); }
+}
+function 填日(d){
+  const tb=document.getElementById("日表");
+  const 空=document.getElementById("日空");
+  if(!tb) return;
+  const 列=d.日表||[];
+  tb.innerHTML="";
+  列.forEach(r=>{
+    const tr=document.createElement("tr");
+    const 今=r.日===d.今日;
+    tr.innerHTML="<td>"+esc(r.日)+(今?" <span class='pill ok'>今天</span>":"")+"</td><td>"+
+      esc(r.上行文)+"</td><td>"+esc(r.下行文)+"</td><td><b>"+esc(r.合计文)+"</b></td>";
+    tb.appendChild(tr);
+  });
+  if(空) 空.classList.toggle("hide", 列.length>0);
+}
+function 填表(d){
+  const tb=document.getElementById("表");
+  const 空=document.getElementById("池空");
+  const q=(document.getElementById("池滤").value||"").trim().toLowerCase();
+  tb.innerHTML="";
+  const 列=d.池||d.proxies||[];
+  let n=0;
+  列.forEach(p=>{
+    const 文=[p.地址,p.出口,p.来源,p.上次错误,p.上次切换].join(" ").toLowerCase();
+    if(q && !文.includes(q)) return;
+    n++;
+    const tr=document.createElement("tr");
+    const 态=p.启用?(p.健康?"<span class='pill ok'>健康</span>":"<span class='pill bad'>摘除</span>"):"<span class='pill mute'>停</span>";
+    const 出=String(p.出口||"");
+    const 出格=出?(出.startsWith("?")?"<span class='pill mute'>探不到</span>":esc(出)):"<span class='pill mute'>待探</span>";
+    tr.innerHTML="<td class=mono>"+esc(p.地址)+" <span class=pill>"+esc(p.方案)+"</span></td><td>"+态+
+      "</td><td>"+出格+"</td><td>"+(p.连接||0)+"</td><td>"+esc(p.上行文||"0 B")+
+      "</td><td>"+esc(p.下行文||"0 B")+"</td><td>"+esc(p.来源)+"</td><td></td><td></td>";
+    tr.cells[7].textContent=p.上次错误||p.上次切换||"";
+    const b=document.createElement("button");
+    b.className="btn bad"; b.textContent="删除";
+    b.onclick=async()=>{ await api("/api/del",{id:p.号||p.id}); 刷(); };
+    tr.cells[8].appendChild(b);
+    tb.appendChild(tr);
+  });
+  空.classList.toggle("hide", 列.length>0);
+  if(列.length && !n) 空.classList.add("hide");
+}
+function 填(d){
+  最新=d;
+  const s=d.闪臣||{};
+  const a=document.getElementById("去面板");
+  if(d.panel_url){ a.href=d.panel_url; a.classList.remove("hide"); }
+  document.getElementById("顶听").textContent=d.listen||"—";
+  document.getElementById("顶版").textContent=d.版本||"—";
+  document.getElementById("活点").className="dot";
+  document.getElementById("活文").textContent="在线";
+  document.getElementById("k健康").textContent=(d.健康||0)+"/"+(d.总数||0);
+  document.getElementById("k健康说").textContent=(s.供应商||d.供应商||"无源")+" · 目标 "+(d.pool_size||0);
+  document.getElementById("k流量").textContent=d.今日合计文||"0 B";
+  document.getElementById("k流量说").textContent="上 "+(d.今日上行文||"0 B")+" / 下 "+(d.今日下行文||"0 B")+" · 累计 "+(d.累计合计文||d.总下行文||"0 B");
+  document.getElementById("k余额").textContent=s.余额|| (s.开?"查询中":"未启用");
+  document.getElementById("k余额说").textContent=s.开?((s.供应商||"已启用")+(s.已加白?"":" · 未加白")):"先配置提取源";
+  document.getElementById("k地区").textContent=d.这批地区||s.地区||"随机";
+  document.getElementById("k地区说").textContent=分布(d.池||[]);
+  const 秒=d.下次换;
+  document.getElementById("k换").textContent=(秒>=0)?(Math.floor(秒/60)+" 分"): "关";
+  document.getElementById("k换说").textContent=d.换说||"—";
+
+  document.getElementById("概览左").innerHTML=
+    行("SOCKS", esc(d.listen))+
+    行("管理页", esc(d.web))+
+    行("验活", esc((d.check_host||"www.dola.com")+":"+(d.check_port||443)))+
+    行("供应商", esc(s.供应商||d.供应商||"无"))+
+    行("提取地区", esc(s.地区||"随机"))+
+    行("每批", (d.sc_count||30)+" 条")+
+    行("自动换新", esc(d.换说||"关"))+
+    行("自动更新", d.auto_update?("每 "+(d.update_minutes||5)+" 分钟"):"关")+
+    行("今日消耗", esc(d.今日合计文||"0 B"))+
+    行("累计流量", "上 "+esc(d.总上行文||"0 B")+" / 下 "+esc(d.总下行文||"0 B"));
+  document.getElementById("概览右").innerHTML=
+    行("上次换新", esc(d.上次换新||"—"))+
+    行("下次换新", 秒>=0?(秒+" 秒后"):"未排期")+
+    行("上轮验活", esc(d.上轮验活||"—"))+
+    行("最近补池", esc(d.上次补||"—"))+
+    行("更新", esc(d.更新说||"—"))+
+    行("本机 IP", esc(s.本机IP||"—"))+
+    行("白名单", s.已加白?"已加入":(s.本机IP?"未加入":"未知"));
+
+  填闪(s);
+  填国(d);
+  填表(d);
+  填日(d);
+  try{
+    const f=document.getElementById("设");
+    塞(f,"mode",d.mode||"round_robin");
+    塞(f,"sticky",d.sticky==="关"?"":(d.sticky||""));
+    塞(f,"pool_size",d.pool_size);
+    塞(f,"fail_n",d.fail_n);
+    塞(f,"check_interval",d.check_interval);
+    塞(f,"check_conc",d.check_conc||16);
+    塞(f,"fetch_url",d.fetch_url||"");
+    塞(f,"fetch_cmd",d.fetch_cmd||"");
+    塞(f,"auto_rotate",d.auto_rotate||0);
+    塞(f,"auto_update",String(d.auto_update?1:0));
+    塞(f,"update_minutes",d.update_minutes||5);
+    塞(f,"fetch_scheme",d.fetch_scheme||"");
+    塞(f,"sc_count",d.sc_count||30);
+    塞(f,"sc_time",String(d.sc_time==null?0:d.sc_time));
+    塞(f,"sc_protocol",d.sc_protocol||"s5");
+    塞(f,"sc_state",d.sc_state||"");
+    塞(f,"sc_city",d.sc_city||"");
+    塞(f,"sc_white",String(d.sc_white==null?1:d.sc_white));
+    const g=document.getElementById("闪");
+    塞(g,"provider",s.供应商选||d.供应商选||"auto");
+    塞(g,"sc_key",d.sc_key||"");
+    塞(g,"go_key",(d.go_url&&!d.go_key)?d.go_url:(d.go_key||""));
+    塞(g,"go_user",d.go_user||"");
+    if(g.sc_code && !脏["闪"]) g.sc_code.placeholder=s.有码?"已保存，留空=不改":"闪臣才要";
+    if(g.go_pass && !脏["闪"]) g.go_pass.placeholder=s.有go密?"已保存，留空=不改":"账密提取才要";
+  }catch(e){ console.warn(e); }
+}
+async function 刷(){
+  try{ 填(await api("/api/status")); }
+  catch(e){
+    document.getElementById("活点").className="dot off";
+    document.getElementById("活文").textContent="掉线";
+  }
+}
+async function 忙(id, 话, 干){
+  const b=document.getElementById(id), 原=b.textContent;
+  b.disabled=true; b.textContent=话;
+  吐(话);
+  try{ 吐(await 干() || "好了"); }
+  catch(e){ 吐("出错了："+e.message,1); }
+  finally{ b.disabled=false; b.textContent=原; 刷(); }
+}
+function 鉴权例(){
+  const 主=location.origin;
+  return `# 读状态\ncurl -sS -H "X-Pass: YOUR_PASS" ${主}/api/status\n\n`+
+         `# 改地区并立刻换新\ncurl -sS -H "X-Pass: YOUR_PASS" -H "Content-Type: application/json" \\\n`+
+         `  -d '{"sc_cntry":"JP"}' ${主}/api/set\n`+
+         `curl -sS -H "X-Pass: YOUR_PASS" -X POST ${主}/api/rotate\n\n`+
+         `# 也可用 Authorization: Bearer YOUR_PASS`;
+}
+function 填接口(j){
+  document.getElementById("鉴权例").textContent=鉴权例();
+  const 盒=document.getElementById("接口表");
+  盒.innerHTML="";
+  (j.接口||[]).forEach(一=>{
+    const d=document.createElement("div");
+    d.className="api-item";
+    d.innerHTML='<div><span class="meth '+esc(一.method)+'">'+esc(一.method)+
+      "</span> <code>"+esc(一.path)+"</code></div>"+
+      "<p class=desc style=margin:6px 0 0>"+esc(一.desc||"")+"</p>"+
+      (一.body?'<pre class="api" style="margin-top:8px">'+esc(JSON.stringify(一.body,null,2))+"</pre>":"");
+    盒.appendChild(d);
+  });
+}
+document.getElementById("闪").onsubmit=e=>{
+  e.preventDefault();
+  const f=e.target;
+  return 忙("开跑","正在开跑…",async()=>{
+    const j=await api("/api/sc/setup",{
+      provider:f.provider.value, key:f.sc_key.value.trim(), code:f.sc_code.value,
+      go_key:f.go_key.value.trim(), go_user:f.go_user.value.trim(), go_pass:f.go_pass.value
+    });
+    f.sc_code.value=""; f.go_pass.value=""; 脏["闪"]=0;
+    return (j.步||[]).join("\n");
+  });
+};
+document.getElementById("设").onsubmit=e=>{
+  e.preventDefault();
+  const f=e.target;
+  return 忙("存高级","保存中…",async()=>{
+    await api("/api/set",{
+      mode:f.mode.value, sticky:f.sticky.value,
+      pool_size:+f.pool_size.value, fail_n:+f.fail_n.value,
+      check_interval:+f.check_interval.value, check_conc:+f.check_conc.value,
+      fetch_url:f.fetch_url.value, fetch_cmd:f.fetch_cmd.value,
+      auto_rotate:+f.auto_rotate.value, fetch_scheme:f.fetch_scheme.value,
+      sc_count:+f.sc_count.value, sc_time:+f.sc_time.value,
+      sc_protocol:f.sc_protocol.value, sc_cntry:f.sc_cntry.value.trim(),
+      sc_state:f.sc_state.value.trim(), sc_city:f.sc_city.value.trim(),
+      sc_white:+f.sc_white.value,
+      auto_update:+f.auto_update.value, update_minutes:+f.update_minutes.value
+    });
+    脏["设"]=0;
+    return "设置已保存";
+  });
+};
+document.getElementById("加白").onclick=()=>忙("加白","加白名单中…",async()=>
+  (await api("/api/sc/white",{})).msg);
+document.getElementById("刷闪").onclick=()=>忙("刷闪","刷新中…",async()=>{
+  const j=await api("/api/sc/refresh",{});
+  const s=j.闪臣||{};
+  return "剩余流量 "+(s.余额||"查不到")+"，本机 "+(s.本机IP||"未知")+(s.已加白?" 已在白名单":" 不在白名单");
+});
+document.getElementById("更新").onclick=()=>忙("更新","检查中…",async()=>
+  (await api("/api/update",{})).msg);
+document.getElementById("补").onclick=()=>忙("补","补池中…",async()=>
+  (await api("/api/fill",{})).msg);
+document.getElementById("换").onclick=()=>忙("换","换新中…",async()=>
+  (await api("/api/rotate",{})).msg);
+document.getElementById("加").onsubmit=e=>{
+  e.preventDefault();
+  const f=e.target;
+  return 忙("手加","加入中…",async()=>{
+    const j=await api("/api/add",{串:f.串.value});
+    f.串.value=""; 脏["加"]=0;
+    return j.err ? ("加了 "+j.n+" 条，出错："+j.err) : ("加了 "+j.n+" 条");
+  });
+};
+document.getElementById("清空").onclick=()=>{
+  if(!confirm("确定删除池里全部代理？")) return;
+  return 忙("清空","删除中…",async()=>"删了 "+(await api("/api/clear",{})).n+" 条");
+};
+document.getElementById("清量").onclick=()=>{
+  if(!confirm("累计流量从现在重新算？")) return;
+  return 忙("清量","清零中…",async()=>(await api("/api/traffic/reset",{})).msg);
+};
+document.getElementById("退").onclick=async()=>{
+  存令("");
+  try{ await api("/api/logout",{}); }catch(e){}
+  开门(true);
+};
+document.getElementById("池滤").oninput=()=>{ if(最新) 填表(最新); };
+document.getElementById("复制例").onclick=async()=>{
+  try{ await navigator.clipboard.writeText(鉴权例()); 吐("已复制"); }
+  catch(e){ 吐("复制失败，自己从框里选",1); }
+};
+document.getElementById("加国").onclick=()=>{
+  const 框=document.getElementById("新国");
+  const 码=(框.value||"").trim().toUpperCase();
+  if(!码){ 吐("先填国家码，例如 TW",1); return; }
+  框.value="";
+  改国("add", 码);
+};
+document.getElementById("新国").onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); document.getElementById("加国").click(); } };
+document.getElementById("复国").onclick=()=>{
+  if(!confirm("把随机库恢复成出厂 9 国？")) return;
+  改国("reset");
+};
+document.getElementById("登").onsubmit=async e=>{
+  e.preventDefault();
+  const 密=(e.target.pass.value||"").trim();
+  const 错=document.getElementById("错");
+  const b=document.getElementById("进");
+  错.textContent="";
+  if(!密){ 错.textContent="先输入密码"; return; }
+  b.disabled=true;
+  try{
+    存令(密);
+    const r=await fetch("/api/login",{method:"POST",credentials:"include",
+      headers:{"Content-Type":"application/json","X-Pass":密},
+      body:JSON.stringify({pass:密})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok || j.ok===false){ 存令(""); 错.textContent=j.err||"密码不对"; return; }
+    开门(false);
+    await 刷();
+    api("/api/regions").then(j=>{ 国表=j.地区||[]; if(最新) 填国(最新); }).catch(()=>{});
+    api("/api").then(填接口).catch(()=>{});
+  }catch(err){
+    存令("");
+    错.textContent=err.message||"连不上桥，确认主程序已启动";
+  }finally{ b.disabled=false; }
+};
+async function 起(){
+  if(!取令()){ 开门(true); return; }
+  try{
+    await api("/api/health");
+    开门(false);
+    await 刷();
+    api("/api/regions").then(j=>{ 国表=j.地区||[]; if(最新) 填国(最新); }).catch(()=>{});
+    api("/api").then(填接口).catch(()=>{});
+  }catch(e){ 开门(true, e.message==="要密码"?"":e.message); }
+}
+起();
+setInterval(()=>{ if(!document.getElementById("门").classList.contains("on")) 刷(); }, 4000);
+</script>
+</body>
+</html>

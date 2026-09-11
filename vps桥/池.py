@@ -128,25 +128,51 @@ def 人读(n: int) -> str:
     "auto_update": 1,
     "update_minutes": 5,
     "update_base": "https://raw.githubusercontent.com/YPN798/X-UI/main",
+    "随机国库": ["JP", "KR", "SG", "TH", "VN", "MY", "PH", "ID", "BR"],
     "proxies": [],
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-11.2"
+版本 = "2026-09-11.6"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
 
-# 三格留空时每批从这里抽一个，整批同一国。
-# 这 9 个是逐个开浏览器进 dola 人工确认过能正常用的，其余地区都撞区域受限，
-# 别凭「闪臣提得到」就往里加，提得到不等于 dola 认。
-随机国库 = (
+# 三格留空时每批从配置里的随机国库抽一个。下面是出厂名单，面板和 API 都能加减。
+默随机国库 = (
     "JP", "KR", "SG", "TH", "VN", "MY", "PH", "ID", "BR",
 )
+随机国库 = 默随机国库
+国名表 = {
+    "JP": "日本", "KR": "韩国", "SG": "新加坡", "TH": "泰国",
+    "VN": "越南", "MY": "马来西亚", "PH": "菲律宾", "ID": "印尼", "BR": "巴西",
+    "HK": "中国香港", "TW": "中国台湾", "US": "美国", "GB": "英国", "DE": "德国",
+    "FR": "法国", "NL": "荷兰", "IT": "意大利", "ES": "西班牙", "CA": "加拿大",
+    "AU": "澳大利亚", "IN": "印度", "PL": "波兰", "SE": "瑞典", "CH": "瑞士",
+    "AE": "阿联酋", "TR": "土耳其", "MX": "墨西哥", "AR": "阿根廷", "ZA": "南非",
+    "RU": "俄罗斯", "UA": "乌克兰",
+}
 
 
 def 地区文(国: str, 州: str = "", 市: str = "") -> str:
     return "/".join(x for x in (国, 州, 市) if x)
+
+
+def 规范国码(码: str) -> str:
+    码 = str(码 or "").strip().upper()
+    return 码 if len(码) == 2 and 码.isalpha() else ""
+
+
+def 洗国库(生) -> list[str]:
+    if isinstance(生, str):
+        生 = 生.replace(",", " ").replace(";", " ").split()
+    出: list[str] = []
+    if isinstance(生, (list, tuple)):
+        for 一 in 生:
+            码 = 规范国码(一)
+            if 码 and 码 not in 出:
+                出.append(码)
+    return 出
 
 
 class 条:
@@ -225,6 +251,7 @@ class 池:
         # 累计流量跟着桥走，换新丢代理、重启都不清零
         self.总上行 = 0
         self.总下行 = 0
+        self.日流量: dict[str, dict[str, int]] = {}
         self.起算 = time.strftime("%Y-%m-%d %H:%M")
         self._流量落盘 = 0.0
         self._补中 = False
@@ -332,6 +359,7 @@ class 池:
             "auto_update": int(self.设.get("auto_update") or 0),
             "update_minutes": self.查更分(),
             "update_base": self.设.get("update_base") or 默认["update_base"],
+            "随机国库": self.国库(),
             # 来源必须一起存，否则重启后拉取来的全变成手加，换新再也换不掉它们
             "proxies": [{"串": 一.串(), "来源": 一.来源} for 一 in self.条们],
         }
@@ -374,6 +402,14 @@ class 池:
             # 旧状态文件没有累计项，用各条之和垫上，别让已有的量凭空消失
             self.总上行 = sum(int(一.get("上行") or 0) for 一 in 条们)
             self.总下行 = sum(int(一.get("下行") or 0) for 一 in 条们)
+        日 = 文.get("日流量")
+        if isinstance(日, dict):
+            桶: dict[str, dict[str, int]] = {}
+            for k, v in 日.items():
+                if not isinstance(k, str) or len(k) != 10 or not isinstance(v, dict):
+                    continue
+                桶[k] = {"上行": int(v.get("上行") or 0), "下行": int(v.get("下行") or 0)}
+            self.日流量 = 桶
 
     def 写状态(self) -> None:
         出 = {
@@ -389,6 +425,7 @@ class 池:
             "起算": self.起算,
             "总上行": self.总上行,
             "总下行": self.总下行,
+            "日流量": self._日盘(),
             # 键只落盘不上接口，页面看到的还是脱敏地址
             "池": [{**一.快照(), "键": 一.键()} for 一 in self.条们],
         }
@@ -470,9 +507,15 @@ class 池:
                 self.闪臣态["码锁到"] = 0.0
             if str(补.get("go_pass") or "").strip():
                 self.设["go_pass"] = str(补["go_pass"]).strip()
+            if str(补.get("web_pass") or "").strip():
+                self.设["web_pass"] = str(补["web_pass"]).strip()
             键或址 = str(补.get("go_key") or "").strip()
             if 键或址.startswith(("http://", "https://")):
                 self.设["go_url"] = 键或址
+            if "随机国库" in 补:
+                列 = 洗国库(补.get("随机国库"))
+                if 列:
+                    self.设["随机国库"] = 列
             self.落盘()
 
     def 查更分(self) -> int:
@@ -563,6 +606,7 @@ class 池:
             一.下行 += 下
             self.总上行 += 上
             self.总下行 += 下
+            self._记日(上, 下)
         # 长连接以前要攒满 256KB 或断开才写盘，面板会半天不动
         now = time.monotonic()
         if now - float(self._流量落盘 or 0) >= 2:
@@ -576,7 +620,52 @@ class 池:
             for 一 in self.条们:
                 一.上行 = 一.下行 = 0
             self.写状态()
-        return f"流量计数已清零，从 {self.起算} 重新算"
+        return f"流量计数已清零，从 {self.起算} 重新算。每日统计还留着"
+
+    def _今日(self) -> str:
+        return time.strftime("%Y-%m-%d")
+
+    def _记日(self, 上: int, 下: int) -> None:
+        日 = self._今日()
+        桶 = self.日流量.get(日) or {"上行": 0, "下行": 0}
+        桶["上行"] += 上
+        桶["下行"] += 下
+        self.日流量[日] = 桶
+        if len(self.日流量) > 60:
+            for 旧 in sorted(self.日流量)[:-60]:
+                self.日流量.pop(旧, None)
+
+    def _日盘(self) -> dict[str, dict[str, int]]:
+        return {k: dict(self.日流量[k]) for k in sorted(self.日流量)[-60:]}
+
+    def 日统计(self) -> dict[str, Any]:
+        日 = self._今日()
+        今 = self.日流量.get(日) or {"上行": 0, "下行": 0}
+        列 = []
+        for k in sorted(self.日流量, reverse=True):
+            v = self.日流量[k]
+            合 = int(v.get("上行") or 0) + int(v.get("下行") or 0)
+            列.append({
+                "日": k,
+                "上行": int(v.get("上行") or 0),
+                "下行": int(v.get("下行") or 0),
+                "合计": 合,
+                "上行文": 人读(v.get("上行") or 0),
+                "下行文": 人读(v.get("下行") or 0),
+                "合计文": 人读(合),
+            })
+        今上, 今下 = int(今["上行"]), int(今["下行"])
+        return {
+            "今日": 日,
+            "今日上行": 今上,
+            "今日下行": 今下,
+            "今日合计": 今上 + 今下,
+            "今日上行文": 人读(今上),
+            "今日下行文": 人读(今下),
+            "今日合计文": 人读(今上 + 今下),
+            "累计合计文": 人读(self.总上行 + self.总下行),
+            "日表": 列,
+        }
 
     async def 报成(self, 一: 条) -> None:
         async with self.锁:
@@ -1145,12 +1234,48 @@ class 池:
     def _记这批(self, 国: str, 州: str = "", 市: str = "") -> None:
         self.这批地区 = 地区文(国, 州, 市) or "随机"
 
+    def 国库(self) -> list[str]:
+        return 洗国库(self.设.get("随机国库")) or list(默随机国库)
+
+    def 国名(self, 码: str) -> str:
+        码 = 规范国码(码)
+        return 国名表.get(码, 码)
+
+    async def 加国(self, 生) -> tuple[list[str], list[str]]:
+        """往随机库加国家。返回 (现在的库, 新加进去的)。"""
+        async with self.锁:
+            现 = self.国库()
+            新 = []
+            for 码 in 洗国库(生):
+                if 码 not in 现:
+                    现.append(码)
+                    新.append(码)
+            if 新:
+                self.设["随机国库"] = 现
+                self.落盘()
+            return 现, 新
+
+    async def 删国(self, 生) -> tuple[list[str], list[str], str]:
+        """从随机库去掉国家。至少留一个。返回 (现在的库, 删掉的, 说明)。"""
+        async with self.锁:
+            现 = self.国库()
+            要 = set(洗国库(生))
+            剩 = [x for x in 现 if x not in 要]
+            if not 剩:
+                return 现, [], "至少留一个国家，随机提取才抽得到"
+            删 = [x for x in 现 if x in 要]
+            if 删:
+                self.设["随机国库"] = 剩
+                self.落盘()
+            return 剩, 删, ""
+
     def _随机国序(self, 避开: str = "") -> list[str]:
-        列 = [x for x in 随机国库 if x != 避开]
+        库 = self.国库()
+        列 = [x for x in 库 if x != 避开]
         random.shuffle(列)
-        if 避开 and 避开 in 随机国库:
+        if 避开 and 避开 in 库:
             列.append(避开)
-        return 列 or list(随机国库)
+        return 列 or list(库)
 
     def _抽地(self, 国: str, 州: str, 市: str, 数: int) -> list[dict]:
         return self._抽一次(self.提取地址(国, 州, 市, 数=数), "")
@@ -1172,7 +1297,7 @@ class 池:
             return 出层
         候选: list[str] = []
         旧 = (self.这批地区 or "").split("/")[0]
-        if not 换国 and 旧 and 旧 in 随机国库:
+        if not 换国 and 旧 and 旧 in self.国库():
             候选.append(旧)
         候选.extend(x for x in self._随机国序(旧) if x not in 候选)
         return [(国, "", "") for 国 in 候选]
@@ -1302,6 +1427,7 @@ class 池:
             "下次换": self.下次换秒(),
             "换说": self.换说(),
             "这批地区": self.这批地区,
+            "随机国库": self.国库(),
             "上次源": self.上次源,
             "供应商": self.当前源() or "无",
             "供应商选": self.设.get("provider") or "auto",
@@ -1319,4 +1445,12 @@ class 池:
             "总下行文": 人读(self.总下行),
             "起算": self.起算,
             "池": [一.快照() for 一 in self.条们],
+            **self.日统计(),
         }
+
+    def 配置快照(self) -> dict[str, Any]:
+        """给机器读设置用，不含整池。"""
+        身 = self.总览()
+        身.pop("池", None)
+        身.pop("日表", None)
+        return 身

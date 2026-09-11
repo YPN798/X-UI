@@ -39,5 +39,6 @@
   "auto_update": 1,
   "update_minutes": 5,
   "update_base": "https://raw.githubusercontent.com/YPN798/X-UI/main",
+  "随机国库": ["JP", "KR", "SG", "TH", "VN", "MY", "PH", "ID", "BR"],
   "proxies": []
 }

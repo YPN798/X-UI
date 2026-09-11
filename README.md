@@ -47,8 +47,41 @@ bash <(curl -fsSL https://raw.githubusercontent.com/YPN798/X-UI/main/install.sh)
 逐个校验语法再覆盖 `/opt/xui-bridge`，然后重启服务。版本号没变只下这一个文件，不会覆盖任何东西；
 配置和池子任何时候都不碰。
 
-面板「高级设置」里能关掉或改周期，旁边的**现在检查更新**是立刻查一次。
-版本号和上次更新结果显示在概览最后一行。
+面板「设置」里能关掉或改周期，「现在检查更新」是立刻查一次。
+版本号和上次更新结果显示在概览里。
+
+### 机器 API
+
+管理页和机器调用是同一套接口，听 `0.0.0.0:41001`。目录：`GET /api`。
+
+鉴权用管理密码（`web_pass`），不要写进 URL：
+
+```bash
+curl -sS -H "X-Pass: $PASS" http://127.0.0.1:41001/api/health
+curl -sS -H "Authorization: Bearer $PASS" http://127.0.0.1:41001/api/status
+curl -sS -H "X-Pass: $PASS" -H "Content-Type: application/json" \
+  -d '{"sc_cntry":"JP","pool_size":30}' http://127.0.0.1:41001/api/set
+curl -sS -H "X-Pass: $PASS" -X POST http://127.0.0.1:41001/api/rotate
+```
+
+完整字段、写接口、错误码和示例见仓库 `vps桥/对接.md`，跑起来后打开 `http://IP:41001/docs`。
+
+| 方法 | 路径 | 作用 |
+|---|---|---|
+| GET | `/api/docs` | 对接文档 Markdown |
+| GET | `/api/health` | 探活，不含密钥 |
+| GET | `/api/status` | 完整状态（含池） |
+| GET | `/api/config` | 只读设置 |
+| GET | `/api/pool` | 只读池 |
+| GET | `/api/stats` | 今日消耗和最近 60 天日表 |
+| GET | `/api/regions` | 当前随机国库 |
+| POST | `/api/regions/add` `/api/regions/del` | 加减随机国家，body `{"码":"TW"}` |
+| POST | `/api/regions` | 整表替换，body `{"地区":["JP","KR"]}` |
+| POST | `/api/set` | 改设置，返回最新 config |
+| POST | `/api/fill` `/api/rotate` | 补池 / 换新 |
+| POST | `/api/add` `/api/del` `/api/clear` | 改池 |
+| POST | `/api/sc/setup` | 写入提取源并开跑 |
+| POST | `/api/passwd` | 改管理密码 |
 
 | 配置项 | 说明 | 默认 |
 |---|---|---|

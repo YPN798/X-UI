@@ -26,6 +26,9 @@ FILES=(
 "更新.py|%E6%9B%B4%E6%96%B0.py"
 "写入分流.py|%E5%86%99%E5%85%A5%E5%88%86%E6%B5%81.py"
 "最低消耗.json|%E6%9C%80%E4%BD%8E%E6%B6%88%E8%80%97.json"
+"面板.html|%E9%9D%A2%E6%9D%BF.html"
+"登录.html|%E7%99%BB%E5%BD%95.html"
+"对接.md|%E5%AF%B9%E6%8E%A5.md"
 )
 
 ver_now(){
@@ -56,6 +59,12 @@ for item in "${FILES[@]}"; do
     *.json)
       python3 -c "import json,io,sys; json.load(io.open(sys.argv[1],encoding='utf-8'))" "$TMP/$name" \
         || { red "不是合法 JSON：$name"; exit 1; } ;;
+    *.html)
+      grep -qiE '<html|<!doctype' "$TMP/$name" \
+        || { red "不像 HTML：$name"; exit 1; } ;;
+    *.md)
+      grep -q '鉴权' "$TMP/$name" \
+        || { red "不像对接文档：$name"; exit 1; } ;;
   esac
 done
 
