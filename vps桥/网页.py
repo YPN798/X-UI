@@ -66,17 +66,32 @@ code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px;word-br
 <p class="次">Xray 只连本机 41000。填完下面两格就不用再管了。点绿色按钮进 X-UI。</p>
 <div class="卡" id="概"></div>
 <div class="卡">
-  <h2>闪臣动态流量</h2>
-  <p class="次">只要这两样。存完自动加白名单、自动提代理、自动定时换新。每批一国，数量一次提齐，下次换新再随机换国。</p>
+  <h2>提取源</h2>
+  <p class="次">闪臣或 IPIPGO，有哪个填哪个。两个都填时按「用哪家」来；自动则谁能提就用谁。每批一国，一次提齐。</p>
   <form id="闪" class="行">
-    <label style="flex:1 1 300px">API Key
-      <input name="sc_key" placeholder="闪臣个人中心获取" style="width:100%">
+    <label>用哪家
+      <select name="provider">
+        <option value="auto">自动（有哪个用哪个）</option>
+        <option value="shanchen">闪臣</option>
+        <option value="ipipgo">IPIPGO</option>
+      </select>
     </label>
-    <label style="flex:1 1 200px">安全码
-      <!-- 不 readonly 的话，浏览器会把本站保存的登录密码自动填进来，
-           一点保存就把好好的安全码冲成登录密码，闪臣直接回 1006 -->
+    <label style="flex:1 1 260px">闪臣 API Key
+      <input name="sc_key" placeholder="闪臣个人中心" style="width:100%">
+    </label>
+    <label style="flex:1 1 160px">闪臣安全码
       <input name="sc_code" type="password" autocomplete="new-password" readonly
              onfocus="this.removeAttribute('readonly')" style="width:100%">
+    </label>
+    <label style="flex:1 1 100%">IPIPGO Key 或提取链接
+      <input name="go_key" placeholder="动态标准后台的 key，或整段 https://api.ipipgo.com/getip?..." style="width:100%">
+    </label>
+    <label>IPIPGO 账号（可选）
+      <input name="go_user" placeholder="账密提取才要" style="min-width:140px">
+    </label>
+    <label>IPIPGO 密码（可选）
+      <input name="go_pass" type="password" autocomplete="new-password" readonly
+             onfocus="this.removeAttribute('readonly')" placeholder="已保存则留空">
     </label>
     <button type="submit" id="开跑">保存并自动开跑</button>
   </form>
@@ -140,11 +155,19 @@ code{background:#eef2f6;border-radius:4px;padding:1px 5px;font-size:12px;word-br
       <input name="fetch_url" placeholder="用闪臣就不用填这里" style="width:100%">
     </label>
     <label>fetch_cmd <input name="fetch_cmd" placeholder="命令 stdout，一行一条" style="min-width:200px"></label>
+    <label>自动更新
+      <select name="auto_update">
+        <option value="1">开（自己拉新代码）</option>
+        <option value="0">关</option>
+      </select>
+    </label>
+    <label>多少分钟查一次 <input name="update_minutes" type="number" min="1" max="10080"></label>
     <button type="submit" id="存高级">保存设置</button>
     <button type="button" class="灰" id="补">立刻补池</button>
     <button type="button" class="灰" id="换">立即换新</button>
     <button type="button" class="灰" id="加白">把本机加进白名单</button>
     <button type="button" class="灰" id="刷闪">刷新余额和白名单</button>
+    <button type="button" class="灰" id="更新">现在检查更新</button>
   </form>
   <form id="加">
     <label>手动加代理（socks5://用户:密码@主机:端口 或 IP|端口|用户|密码，可多行）
@@ -193,11 +216,11 @@ function 说(文){
 function 填闪(s){
   const 盒=document.getElementById("闪态");
   if(!s || !s.开){
-    盒.innerHTML="<span class=次>还没填 API Key，闪臣这套没启用。</span>";
+    盒.innerHTML="<span class=次>还没填闪臣或 IPIPGO，提取没启用。</span>";
     document.getElementById("盖").textContent="";
     return;
   }
-  document.getElementById("盖").textContent="（闪臣已接管，这里填了也不生效）";
+  document.getElementById("盖").textContent="（上面两家已接管，这里填了也不生效）";
   const 白=s.白名单||[];
   const 余=s.余额?("<b>"+esc(s.余额)+"</b>"):"<span class=次>还没查到</span>";
   const 本=s.本机IP?esc(s.本机IP):"没问到";
@@ -217,6 +240,7 @@ function 填闪(s){
   }else{
     h+="<div class='条 次'>白名单是空的。</div>";
   }
+  if(s.ipipgo开) h+="<div class='条 次'>IPIPGO 动态标准：把本机出口 IP 加到他们后台白名单，提取链接从套餐页复制到上面那一格即可。</div>";
   h+="<div class=条 style=margin-top:8px>提取地址 <code>"+esc(s.提取地址||"")+"</code></div>";
   盒.innerHTML=h;
   const tb=document.getElementById("白表");
@@ -260,15 +284,17 @@ function 填(d){
         "<div>累计 上行 <b>"+esc(d.总上行文||"0 B")+"</b>、下行 <b>"+esc(d.总下行文||"0 B")+
         "</b><span class=次>（自 "+esc(d.起算||"")+" 起算，换新和重启都不清零）</span></div>";
   if(s.开){
-    h+="<div>闪臣 Key <span class=好>已保存</span> · 安全码 "+
-       (s.有码?"<span class=好>已保存</span><span class=次>（"+(s.码长||0)+" 位）</span>"
-              :"<span class=坏>没保存</span>")+
-       " · 剩余 <b>"+esc(s.余额||"查询中…")+"</b> · 地区 <b>"+esc(s.地区||"随机")+"</b>"+
+    h+="<div>正在用 <b>"+esc(s.供应商||d.供应商||"无")+"</b>"+
+       (s.供应商选&&s.供应商选!=="auto"?"（指定）":"（自动）")+
+       " · 闪臣 "+(s.闪臣开?"<span class=好>已配</span>":"<span class=次>没配</span>")+
+       " · IPIPGO "+(s.ipipgo开?"<span class=好>已配</span>":"<span class=次>没配</span>")+
+       (s.闪臣开?(" · 剩余 <b>"+esc(s.余额||"查询中…")+"</b>"):"")+
+       " · 地区 <b>"+esc(s.地区||"随机")+"</b>"+
        " · 每批 <b>"+(d.sc_count||30)+"</b> 条 · 自动换新 "+
        (d.换说&&d.换说!=="关"?"<b>"+esc(d.换说)+"</b>":"<span class=坏>没开</span>")+
        " · 验活每 <b>"+(d.check_interval||120)+"</b> 秒</div>";
   }else{
-    h+="<div class=坏>闪臣还没启用：上面填 API Key 和安全码，点「保存并自动开跑」。</div>";
+    h+="<div class=坏>还没启用：上面选一家或两家都填，点「保存并自动开跑」。</div>";
   }
   h+="<div>这批出口 "+分布(d.池||[])+
      (d.这批地区?" · 提取指定 <b>"+esc(d.这批地区)+"</b>":"")+"</div>";
@@ -278,7 +304,9 @@ function 填(d){
   if(d.上轮验活) 换.push(esc(d.上轮验活));
   if(换.length) h+="<div class=次>"+换.join(" · ")+"</div>";
   if(d.上次补) h+="<div class=次>最近："+esc(d.上次补)+"</div>";
-  if(d.版本) h+="<div class=次>桥版本 "+esc(d.版本)+"</div>";
+  if(d.版本) h+="<div class=次>桥版本 "+esc(d.版本)+
+    " · 自动更新 "+(d.auto_update?"每 "+(d.update_minutes||5)+" 分钟":"关")+
+    (d.更新说?" · "+esc(d.更新说):"")+"</div>";
   document.getElementById("概").innerHTML=h;
   填闪(s);
   const tb=document.getElementById("表");
@@ -315,6 +343,8 @@ function 填(d){
     塞(f,"fetch_url",d.fetch_url||"");
     塞(f,"fetch_cmd",d.fetch_cmd||"");
     塞(f,"auto_rotate",d.auto_rotate||0);
+    塞(f,"auto_update",String(d.auto_update?1:0));
+    塞(f,"update_minutes",d.update_minutes||5);
     塞(f,"fetch_scheme",d.fetch_scheme||"");
     塞(f,"sc_count",d.sc_count||30);
     塞(f,"sc_time",String(d.sc_time==null?0:d.sc_time));
@@ -324,8 +354,12 @@ function 填(d){
     塞(f,"sc_city",d.sc_city||"");
     塞(f,"sc_white",String(d.sc_white==null?1:d.sc_white));
     const g=document.getElementById("闪");
+    塞(g,"provider",s.供应商选||d.供应商选||"auto");
     塞(g,"sc_key",d.sc_key||"");
-    if(g.sc_code && !脏["闪"]) g.sc_code.placeholder=s.有码?"已保存，留空=不改":"必填，闪臣个人中心设置";
+    塞(g,"go_key",(d.go_url&&!d.go_key)?d.go_url:(d.go_key||""));
+    塞(g,"go_user",d.go_user||"");
+    if(g.sc_code && !脏["闪"]) g.sc_code.placeholder=s.有码?"已保存，留空=不改":"闪臣才要";
+    if(g.go_pass && !脏["闪"]) g.go_pass.placeholder=s.有go密?"已保存，留空=不改":"账密提取才要";
   }catch(e){ console.warn(e); }
 }
 async function 刷(){ 填(await api("/api/status")); }
@@ -342,8 +376,11 @@ document.getElementById("闪").onsubmit=e=>{
   e.preventDefault();
   const f=e.target;
   return 忙("开跑","正在开跑，要十几秒…",async()=>{
-    const j=await api("/api/sc/setup",{key:f.sc_key.value.trim(), code:f.sc_code.value});
-    f.sc_code.value=""; 脏["闪"]=0;
+    const j=await api("/api/sc/setup",{
+      provider:f.provider.value, key:f.sc_key.value.trim(), code:f.sc_code.value,
+      go_key:f.go_key.value.trim(), go_user:f.go_user.value.trim(), go_pass:f.go_pass.value
+    });
+    f.sc_code.value=""; f.go_pass.value=""; 脏["闪"]=0;
     return (j.步||[]).join("\\n");
   });
 };
@@ -360,7 +397,8 @@ document.getElementById("设").onsubmit=e=>{
       sc_count:+f.sc_count.value, sc_time:+f.sc_time.value,
       sc_protocol:f.sc_protocol.value, sc_cntry:f.sc_cntry.value.trim(),
       sc_state:f.sc_state.value.trim(), sc_city:f.sc_city.value.trim(),
-      sc_white:+f.sc_white.value
+      sc_white:+f.sc_white.value,
+      auto_update:+f.auto_update.value, update_minutes:+f.update_minutes.value
     });
     脏["设"]=0;
     return "高级设置已保存";
@@ -374,6 +412,8 @@ document.getElementById("刷闪").onclick=()=>忙("刷闪","刷新中…",async(
   return "剩余流量 "+(s.余额||"查不到")+"，本机 "+(s.本机IP||"未知")+
          (s.已加白?"已在白名单":"不在白名单");
 });
+document.getElementById("更新").onclick=()=>忙("更新","检查中…",async()=>
+  (await api("/api/update",{})).msg);
 document.getElementById("补").onclick=()=>忙("补","补池中…",async()=>
   (await api("/api/fill",{})).msg);
 document.getElementById("换").onclick=()=>忙("换","换新中…",async()=>
@@ -708,11 +748,22 @@ async def 处理管理(读, 写, 池子: 池) -> None:
         elif 法 == "POST" and 路 == "/api/rotate":
             说 = await 池子.换新()
             _json(写, 200, {"ok": True, "msg": 说})
+        elif 法 == "POST" and 路 == "/api/update":
+            from 更新 import 更新一次
+            # 真更新了会重启服务，这条响应能不能送达看运气，所以先回再重启
+            说 = await 更新一次(池子)
+            _json(写, 200, {"ok": True, "msg": 说})
         elif 法 == "POST" and 路 == "/api/traffic/reset":
             _json(写, 200, {"ok": True, "msg": await 池子.清流量()})
         elif 法 == "POST" and 路 == "/api/sc/setup":
-            步 = await 池子.一键开跑(str(数据.get("key") or "").strip(),
-                                     str(数据.get("code") or "").strip())
+            步 = await 池子.一键开跑(
+                str(数据.get("key") or "").strip(),
+                str(数据.get("code") or "").strip(),
+                str(数据.get("provider") or "").strip(),
+                str(数据.get("go_key") or "").strip(),
+                str(数据.get("go_user") or "").strip(),
+                str(数据.get("go_pass") or "").strip(),
+            )
             _json(写, 200, {"ok": True, "步": 步})
         elif 法 == "POST" and 路 == "/api/sc/white":
             好, 说 = await asyncio.to_thread(

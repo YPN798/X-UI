@@ -3071,13 +3071,13 @@ fi
 }
 mkdir -p /opt/xui-bridge /etc/xui-bridge /tmp/xui-bridge
 local f
-for f in 主程序.py 解析.py 池.py 转发.py 网页.py 配置.示例.json 最低消耗.json 写入分流.py xui-bridge.service; do
+for f in 主程序.py 解析.py 池.py 转发.py 网页.py 更新.py 配置.示例.json 最低消耗.json 写入分流.py xui-bridge.service; do
 self_get "/tmp/xui-bridge/${f}" "vps桥/${f}" || {
 red "拉桥文件失败 vps桥/${f}（私有仓库请设置 GH_TOKEN）"
 return 1
 }
 done
-cp -f /tmp/xui-bridge/主程序.py /tmp/xui-bridge/解析.py /tmp/xui-bridge/池.py /tmp/xui-bridge/转发.py /tmp/xui-bridge/网页.py /tmp/xui-bridge/写入分流.py /opt/xui-bridge/
+cp -f /tmp/xui-bridge/主程序.py /tmp/xui-bridge/解析.py /tmp/xui-bridge/池.py /tmp/xui-bridge/转发.py /tmp/xui-bridge/网页.py /tmp/xui-bridge/更新.py /tmp/xui-bridge/写入分流.py /tmp/xui-bridge/最低消耗.json /opt/xui-bridge/
 if [[ ! -f /etc/xui-bridge/config.json ]]; then
 cp -f /tmp/xui-bridge/配置.示例.json /etc/xui-bridge/config.json
 fi

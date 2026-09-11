@@ -26,7 +26,18 @@
   "sc_state": "",
   "sc_city": "",
   "sc_white": 1,
+  "provider": "auto",
+  "go_base": "https://api.ipipgo.com",
+  "go_key": "",
+  "go_url": "",
+  "go_user": "",
+  "go_pass": "",
+  "go_host": "proxy.ipipgo.com",
+  "go_port": 1080,
   "defaults_ver": 4,
   "web_pass": "YPN940815...",
+  "auto_update": 1,
+  "update_minutes": 5,
+  "update_base": "https://raw.githubusercontent.com/YPN798/X-UI/main",
   "proxies": []
 }
