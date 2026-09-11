@@ -23,6 +23,12 @@ from 池 import 国名表, 池, 版本, 洗国库, 默随机国库
 
 def _读页(名: str, 垫: str) -> str:
     p = 旁 / 名
+    if (not p.is_file()) or p.stat().st_size < 20:
+        try:
+            from 更新 import 补一个
+            补一个(名)
+        except Exception as 错:
+            日志.warning("补 %s 失败：%s", 名, 错)
     try:
         return p.read_text(encoding="utf-8")
     except Exception:

@@ -39,8 +39,11 @@ def 用北京时间() -> None:
 用北京时间()
 
 from 池 import 池
-from 更新 import 自动更新循环
+from 更新 import 补缺旁文件, 自动更新循环
 from 转发 import 开socks, 验活循环
+
+补缺旁文件()
+
 from 网页 import 开网页
 
 日志 = logging.getLogger("xui桥")

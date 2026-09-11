@@ -34,6 +34,34 @@ from urllib.request import Request, urlopen
 )
 装在 = Path("/opt/xui-bridge")
 服务名 = "xui-bridge"
+# 新版本才有的旁文件。老更新脚本不会拉它们，起来后自己补。
+旁文件 = ("面板.html", "登录.html", "对接.md")
+
+
+def 补一个(名: str, 底: str = "") -> Path:
+    """把仓库里的一个文件拉到和 更新.py 同一目录。"""
+    底 = (底 or "https://raw.githubusercontent.com/YPN798/X-UI/main").rstrip("/")
+    数据 = _下一个(底, 名)
+    _校验(名, 数据)
+    目标 = Path(__file__).resolve().parent / 名
+    目标.write_bytes(数据)
+    return 目标
+
+
+def 补缺旁文件(底: str = "") -> list[str]:
+    根 = Path(__file__).resolve().parent
+    成 = []
+    for 名 in 旁文件:
+        p = 根 / 名
+        if p.is_file() and p.stat().st_size > 20:
+            continue
+        try:
+            补一个(名, 底)
+            成.append(名)
+            日志.info("补上了缺的 %s", 名)
+        except Exception as 错:
+            日志.warning("补 %s 失败：%s", 名, 错)
+    return 成
 
 
 def 本地版本() -> str:
