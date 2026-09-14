@@ -365,13 +365,14 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
         except Exception as 错:
             日志.warning("开机加白名单失败：%s", 错)
     while not 停.is_set():
+        await 池子.收旧()
         间隔 = max(8, int(池子.设.get("check_interval") or 120))
         秒 = float(池子.设.get("connect_timeout") or 8)
         并发 = max(1, min(64, int(池子.设.get("check_conc") or 16)))
         验主 = str(池子.设.get("check_host") or "www.dola.com").strip() or "www.dola.com"
         验口 = int(池子.设.get("check_port") or 443)
         门 = asyncio.Semaphore(并发)
-        拷 = [一 for 一 in list(池子.条们) if 一.启用]
+        拷 = [一 for 一 in list(池子.条们) if 一.启用 and not 一.退役]
         起 = time.monotonic()
 
         async def 验(一: 条) -> None:
@@ -419,7 +420,7 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
             日志.warning("补池/换新失败：%s", 错)
 
         # 新进来的线路问一下出口在哪国，面板上才看得出地区是不是真随机
-        没探 = [一 for 一 in list(池子.条们) if 一.启用 and 一.健康 and not 一.出口][:64]
+        没探 = [一 for 一 in list(池子.条们) if 一.启用 and 一.健康 and not 一.退役 and not 一.出口][:64]
         if 没探:
             async def 探(一: 条) -> None:
                 async with 门:

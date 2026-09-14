@@ -89,7 +89,7 @@ def 人读(n: int) -> str:
     "port": 41000,
     "web": "0.0.0.0",
     "web_port": 41001,
-    "pool_size": 30,
+    "pool_size": 60,
     "mode": "round_robin",
     "sticky": "",
     "fail_n": 3,
@@ -101,11 +101,11 @@ def 人读(n: int) -> str:
     "fetch_url": "",
     "fetch_cmd": "",
     "fetch_scheme": "",
-    "auto_rotate": 300,
+    "auto_rotate": 120,
     "sc_base": "https://global.shanchendaili.com",
     "sc_key": "",
     "sc_code": "",
-    "sc_count": 30,
+    "sc_count": 60,
     "sc_time": 0,
     "sc_protocol": "s5",
     # 三格留空=每批随机一国，一次提够指定条数。钉死了就按钉的提
@@ -122,7 +122,7 @@ def 人读(n: int) -> str:
     "go_pass": "",
     "go_host": "proxy.ipipgo.com",
     "go_port": 1080,
-    "defaults_ver": 4,
+    "defaults_ver": 5,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -133,10 +133,12 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-11.7"
+版本 = "2026-09-14.2"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
+# 换新后旧线路最多再留这么久：有连接的把回包走完，超时也从池里拿掉（套接字仍由转发握着）
+交叠秒 = 60
 
 # 三格留空时每批从配置里的随机国库抽一个。下面是出厂名单，面板和 API 都能加减。
 默随机国库 = (
@@ -194,6 +196,9 @@ class 条:
         self.上次切换 = str(信.get("上次切换") or "")
         # 经这条代理出去后外面看到的国家/城市/IP，探一次记下来
         self.出口 = str(信.get("出口") or "")
+        # 换新时先入新一批，旧的标退役：不再接新连接，等已有连接把回包走完
+        self.退役 = False
+        self.退役于 = 0.0
 
     def 键(self) -> str:
         return f"{self.方案}|{self.主机}|{self.端口}|{self.用户}"
@@ -212,7 +217,8 @@ class 条:
             "号": self.号,
             "地址": self.脱敏(),
             "方案": self.方案,
-            "来源": self.来源,
+            "来源": "退役" if self.退役 else self.来源,
+            "退役": self.退役,
             "启用": self.启用,
             "健康": self.健康,
             "失败": self.失败,
@@ -293,6 +299,10 @@ class 池:
             if 旧版 < 4 and (str(self.设.get("sc_cntry") or ""), str(self.设.get("sc_state") or ""),
                              str(self.设.get("sc_city") or "")) == ("JP", "Tokyo", ""):
                 self.设["sc_cntry"] = self.设["sc_state"] = self.设["sc_city"] = ""
+            if 旧版 < 5:
+                self.设["pool_size"] = 默认["pool_size"]
+                self.设["sc_count"] = 默认["sc_count"]
+                self.设["auto_rotate"] = 默认["auto_rotate"]
             self.设["defaults_ver"] = 默认["defaults_ver"]
         self.条们 = []
         for 一 in 原.get("proxies") or []:
@@ -361,7 +371,7 @@ class 池:
             "update_base": self.设.get("update_base") or 默认["update_base"],
             "随机国库": self.国库(),
             # 来源必须一起存，否则重启后拉取来的全变成手加，换新再也换不掉它们
-            "proxies": [{"串": 一.串(), "来源": 一.来源} for 一 in self.条们],
+            "proxies": [{"串": 一.串(), "来源": 一.来源} for 一 in self.条们 if not 一.退役],
         }
         临时 = self.径.with_suffix(self.径.suffix + ".tmp")
         临时.write_text(json.dumps(出, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -458,6 +468,10 @@ class 池:
         键 = f"{规范协议(信.get('方案') or 'socks5')}|{主}|{口}|{信.get('用户') or ''}"
         for 已 in self.条们:
             if 已.键() == 键:
+                已.退役 = False
+                已.退役于 = 0.0
+                已.来源 = 来源
+                已.启用 = True
                 return 已
         一 = 条(信, 来源=来源)
         self.条们.append(一)
@@ -535,7 +549,7 @@ class 池:
 
         sc_time 是闪臣的时长档，不是分钟数：
           0 = 5-30 分钟（默认短效）  2 = 1-6 小时  1 = 每请求一换
-        用户把「自动换新秒」设成 300，却选了 1-6 小时，等于每 5 分钟就把
+        用户把「自动换新秒」设成 120，却选了 1-6 小时，等于每 2 分钟就把
         还没到期的 IP 扔了。这里给一个按档位的下限，取两者较大值。
         """
         设换 = max(0, int(self.设.get("auto_rotate") or 0))
@@ -544,7 +558,7 @@ class 池:
             return 0  # 每请求一换，池里就 1 条，用不着定时换新
         if 设换 <= 0:
             return 0  # 用户主动关了自动换新
-        下限 = 3600 if 模 == 2 else 300
+        下限 = 3600 if 模 == 2 else 120
         return max(设换, 下限)
 
     def 换说(self) -> str:
@@ -563,7 +577,30 @@ class 池:
         return max(0, int(换期 - (time.monotonic() - self.换基)))
 
     def 健康们(self) -> list[条]:
-        return [一 for 一 in self.条们 if 一.启用 and 一.健康]
+        return [一 for 一 in self.条们 if 一.启用 and 一.健康 and not 一.退役]
+
+    def _提取的(self, 一: 条) -> bool:
+        return 一.来源 == "拉取" or 闪臣主机 in 一.主机 or ipipgo主机 in 一.主机
+
+    def _收旧(self, 宽限: float = 交叠秒) -> int:
+        """丢掉已经没连接、或超过交叠时限的退役线路。不关套接字。"""
+        now = time.monotonic()
+        留: list[条] = []
+        丢 = 0
+        for 一 in self.条们:
+            if not 一.退役:
+                留.append(一)
+                continue
+            到期 = 一.退役于 > 0 and (now - 一.退役于) >= 宽限
+            if 一.连接 <= 0 or 到期:
+                丢 += 1
+                continue
+            留.append(一)
+        if 丢:
+            活号 = {一.号 for 一 in 留}
+            self.粘 = {k: v for k, v in self.粘.items() if v in 活号}
+            self.条们 = 留
+        return 丢
 
     def _挑(self, 候选: list[条]) -> 条:
         模 = str(self.设.get("mode") or "round_robin")
@@ -576,7 +613,7 @@ class 池:
         async with self.锁:
             候选 = self.健康们()
             if not 候选:
-                候选 = [一 for 一 in self.条们 if 一.启用]
+                候选 = [一 for 一 in self.条们 if 一.启用 and not 一.退役]
             if not 候选:
                 return None
             粘住 = str(self.设.get("sticky") or "")
@@ -597,7 +634,16 @@ class 池:
     async def 出(self, 一: 条) -> None:
         async with self.锁:
             一.连接 = max(0, 一.连接 - 1)
+            if 一.退役 and 一.连接 == 0:
+                self._收旧()
         self.写状态()
+
+    async def 收旧(self) -> int:
+        async with self.锁:
+            n = self._收旧()
+            if n:
+                self.写状态()
+            return n
 
     async def 记流量(self, 一: 条, 上行: int = 0, 下行: int = 0) -> None:
         上, 下 = max(0, int(上行 or 0)), max(0, int(下行 or 0))
@@ -1359,7 +1405,7 @@ class 池:
         return 说
 
     async def 换新(self) -> str:
-        """丢掉全部拉取来的代理，重新提一批。手动添加的保留不动。"""
+        """先入新一批，旧拉取线路标退役。新连接走新 IP；旧连接把回包走完再丢。手加不动。"""
         if not self.有拉取源():
             说 = "未配置提取接口，无法换新"
             self.上次补 = 说
@@ -1373,20 +1419,36 @@ class 池:
             日志.warning("%s", 说)
             return 说
         async with self.锁:
-            # 闪臣的线路不管标成什么来源都一起换掉，别再让老的赖着
-            self.条们 = [一 for 一 in self.条们
-                        if 一.来源 != "拉取" and 闪臣主机 not in 一.主机 and ipipgo主机 not in 一.主机]
-            self.粘 = {}
+            self._收旧()
+            旧 = [一 for 一 in self.条们 if self._提取的(一) and not 一.退役]
+            新成 = 0
             for 信 in 批:
                 try:
-                    self._塞(信, 来源="拉取", 落盘=False)
+                    入 = self._塞(信, 来源="拉取", 落盘=False)
+                    if 入 in 旧:
+                        旧.remove(入)
+                    新成 += 1
                 except ValueError as 错:
                     日志.warning("换新入池失败：%s", 错)
+            if 新成 <= 0:
+                说 = f"换新入池 0 条，保持原池 {time.strftime('%H:%M:%S')}"
+                self.上次补 = 说
+                日志.warning("%s", 说)
+                return 说
+            now = time.monotonic()
+            旧号 = {一.号 for 一 in 旧}
+            for 一 in 旧:
+                一.退役 = True
+                一.退役于 = now
+            self.粘 = {k: v for k, v in self.粘.items() if v not in 旧号}
+            丢 = self._收旧()
             self.落盘()
-            数 = len([一 for 一 in self.条们 if 一.来源 == "拉取"])
+            数 = len([一 for 一 in self.条们 if self._提取的(一) and not 一.退役])
+            等走 = len([一 for 一 in self.条们 if 一.退役])
         self.上次换新 = time.strftime("%Y-%m-%d %H:%M:%S")
         地 = f"，{self.这批地区}" if self.这批地区 else ""
-        说 = f"已换新{地}，拉取 {数} 条 {time.strftime('%H:%M:%S')}"
+        尾 = f"，{等走} 条等回包" if 等走 else (f"，空闲旧线路已下 {丢} 条" if 丢 else "")
+        说 = f"已换新{地}，新 {数} 条{尾} {time.strftime('%H:%M:%S')}"
         self.上次补 = 说
         日志.info("%s", 说)
         return 说

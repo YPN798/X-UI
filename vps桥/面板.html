@@ -82,6 +82,7 @@ th{color:var(--muted); font-weight:600; font-size:12px}
 .pill.ok{background:var(--ok2); border-color:#245c32; color:#7ee787}
 .pill.bad{background:var(--bad2); border-color:#6e2228; color:#ff9b96}
 .pill.mute{color:var(--muted)}
+.pill.warn{background:#3a2e10; border-color:#6e5a1e; color:#e3c766}
 .mono{font-family:ui-monospace,Consolas,monospace; font-size:12px}
 .rowbar{display:flex; gap:8px; align-items:center; margin-bottom:10px}
 .rowbar input{flex:1}
@@ -521,7 +522,7 @@ function 填表(d){
     if(q && !文.includes(q)) return;
     n++;
     const tr=document.createElement("tr");
-    const 态=p.启用?(p.健康?"<span class='pill ok'>健康</span>":"<span class='pill bad'>摘除</span>"):"<span class='pill mute'>停</span>";
+    const 态=p.退役?"<span class='pill warn'>交替</span>":p.启用?(p.健康?"<span class='pill ok'>健康</span>":"<span class='pill bad'>摘除</span>"):"<span class='pill mute'>停</span>";
     const 出=String(p.出口||"");
     const 出格=出?(出.startsWith("?")?"<span class='pill mute'>探不到</span>":esc(出)):"<span class='pill mute'>待探</span>";
     tr.innerHTML="<td class=mono>"+esc(p.地址)+" <span class=pill>"+esc(p.方案)+"</span></td><td>"+态+
@@ -564,7 +565,7 @@ function 填(d){
     行("验活", esc((d.check_host||"www.dola.com")+":"+(d.check_port||443)))+
     行("供应商", esc(s.供应商||d.供应商||"无"))+
     行("提取地区", esc(s.地区||"随机"))+
-    行("每批", (d.sc_count||30)+" 条")+
+    行("每批", (d.sc_count||60)+" 条")+
     行("自动换新", esc(d.换说||"关"))+
     行("自动更新", d.auto_update?("每 "+(d.update_minutes||5)+" 分钟"):"关")+
     行("今日消耗", esc(d.今日合计文||"0 B"))+
@@ -596,7 +597,7 @@ function 填(d){
     塞(f,"auto_update",String(d.auto_update?1:0));
     塞(f,"update_minutes",d.update_minutes||5);
     塞(f,"fetch_scheme",d.fetch_scheme||"");
-    塞(f,"sc_count",d.sc_count||30);
+    塞(f,"sc_count",d.sc_count||60);
     塞(f,"sc_time",String(d.sc_time==null?0:d.sc_time));
     塞(f,"sc_protocol",d.sc_protocol||"s5");
     塞(f,"sc_state",d.sc_state||"");
