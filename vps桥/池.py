@@ -133,7 +133,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-14.2"
+版本 = "2026-09-15.1"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
