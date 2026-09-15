@@ -101,7 +101,7 @@ def 人读(n: int) -> str:
     "fetch_url": "",
     "fetch_cmd": "",
     "fetch_scheme": "",
-    "auto_rotate": 120,
+    "auto_rotate": 30,
     "sc_base": "https://global.shanchendaili.com",
     "sc_key": "",
     "sc_code": "",
@@ -122,7 +122,7 @@ def 人读(n: int) -> str:
     "go_pass": "",
     "go_host": "proxy.ipipgo.com",
     "go_port": 1080,
-    "defaults_ver": 7,
+    "defaults_ver": 8,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -133,12 +133,12 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-15.5"
+版本 = "2026-09-15.6"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
 # 换新后旧线路最多再留这么久：有连接的把回包走完，超时也从池里拿掉（套接字仍由转发握着）
-交叠秒 = 60
+交叠秒 = 30
 
 # 三格留空时每批从配置里的随机国库抽一个。下面是出厂名单，面板和 API 都能加减。
 默随机国库 = (
@@ -308,6 +308,8 @@ class 池:
                 self.设["sc_protocol"] = 默认["sc_protocol"]
             if 旧版 < 7:
                 self.设["sc_protocol"] = 默认["sc_protocol"]
+            if 旧版 < 8:
+                self.设["auto_rotate"] = 默认["auto_rotate"]
             self.设["defaults_ver"] = 默认["defaults_ver"]
         self.条们 = []
         for 一 in 原.get("proxies") or []:
@@ -554,7 +556,7 @@ class 池:
 
         sc_time 是闪臣的时长档，不是分钟数：
           0 = 5-30 分钟（默认短效）  2 = 1-6 小时  1 = 每请求一换
-        用户把「自动换新秒」设成 120，却选了 1-6 小时，等于每 2 分钟就把
+        用户把「自动换新秒」设成 30，却选了 1-6 小时，等于每 30 秒就把
         还没到期的 IP 扔了。这里给一个按档位的下限，取两者较大值。
         """
         设换 = max(0, int(self.设.get("auto_rotate") or 0))
@@ -563,7 +565,7 @@ class 池:
             return 0  # 每请求一换，池里就 1 条，用不着定时换新
         if 设换 <= 0:
             return 0  # 用户主动关了自动换新
-        下限 = 3600 if 模 == 2 else 120
+        下限 = 3600 if 模 == 2 else 30
         return max(设换, 下限)
 
     def 换说(self) -> str:

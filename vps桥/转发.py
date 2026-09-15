@@ -357,6 +357,7 @@ async def 开socks(池子: 池) -> asyncio.AbstractServer:
 
 async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
     上次换 = time.monotonic()
+    上次验 = 0.0
     上次刷 = 0.0
     if 池子.可自动白():
         try:
@@ -372,8 +373,7 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
         验主 = str(池子.设.get("check_host") or "www.dola.com").strip() or "www.dola.com"
         验口 = int(池子.设.get("check_port") or 443)
         门 = asyncio.Semaphore(并发)
-        拷 = [一 for 一 in list(池子.条们) if 一.启用 and not 一.退役]
-        起 = time.monotonic()
+        现在 = time.monotonic()
 
         async def 验(一: 条) -> None:
             async with 门:
@@ -385,18 +385,22 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
                 except Exception as 错:
                     await 池子.报败(一, str(错))
 
-        # 每个阶段都给上限。任何一步卡住，换新和刷余额就全停了，面板看着像死机
-        if 拷:
-            轮数 = -(-len(拷) // 并发)
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*(验(一) for 一 in 拷)),
-                    timeout=轮数 * 秒 * 3 + 30,
-                )
-            except asyncio.TimeoutError:
-                日志.warning("这轮验活超时，先往下走")
-        好 = len(池子.健康们())
-        池子.上轮验活 = f"{time.strftime('%H:%M:%S')} 验了 {len(拷)} 条，健康 {好}，用了 {time.monotonic() - 起:.0f} 秒"
+        # 验活和换新分开计时，不然换新 30 秒也会被验活的 120 秒拖住
+        if 上次验 <= 0 or 现在 - 上次验 >= 间隔:
+            拷 = [一 for 一 in list(池子.条们) if 一.启用 and not 一.退役]
+            起 = time.monotonic()
+            if 拷:
+                轮数 = -(-len(拷) // 并发)
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*(验(一) for 一 in 拷)),
+                        timeout=轮数 * 秒 * 3 + 30,
+                    )
+                except asyncio.TimeoutError:
+                    日志.warning("这轮验活超时，先往下走")
+            好 = len(池子.健康们())
+            池子.上轮验活 = f"{time.strftime('%H:%M:%S')} 验了 {len(拷)} 条，健康 {好}，用了 {time.monotonic() - 起:.0f} 秒"
+            上次验 = time.monotonic()
 
         换期 = 池子.有效换期()
         现在 = time.monotonic()
@@ -441,7 +445,11 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
         池子.换基 = 上次换
         池子.写状态()
         日志.info("%s；下次换新约 %s 秒后", 池子.上轮验活, 池子.下次换秒())
+        现在 = time.monotonic()
+        下验 = 间隔 - (现在 - 上次验)
+        下换 = (换期 - (现在 - 上次换)) if 换期 else 间隔
+        等到 = max(1, min(间隔, 下验, 下换 if 下换 > 0 else 1))
         try:
-            await asyncio.wait_for(停.wait(), timeout=间隔)
+            await asyncio.wait_for(停.wait(), timeout=等到)
         except asyncio.TimeoutError:
             pass
