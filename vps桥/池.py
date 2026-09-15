@@ -133,7 +133,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-15.6"
+版本 = "2026-09-15.7"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -590,7 +590,7 @@ class 池:
         return 一.来源 == "拉取" or 闪臣主机 in 一.主机 or ipipgo主机 in 一.主机
 
     def _收旧(self, 宽限: float = 交叠秒) -> int:
-        """丢掉已经没连接、或超过交叠时限的退役线路。不关套接字。"""
+        """只拿掉超过交叠时限的退役线路。空闲也留着，避免换新当下把旧 IP 从面板抹掉。不关套接字。"""
         now = time.monotonic()
         留: list[条] = []
         丢 = 0
@@ -599,7 +599,7 @@ class 池:
                 留.append(一)
                 continue
             到期 = 一.退役于 > 0 and (now - 一.退役于) >= 宽限
-            if 一.连接 <= 0 or 到期:
+            if 到期:
                 丢 += 1
                 continue
             留.append(一)
@@ -641,8 +641,6 @@ class 池:
     async def 出(self, 一: 条) -> None:
         async with self.锁:
             一.连接 = max(0, 一.连接 - 1)
-            if 一.退役 and 一.连接 == 0:
-                self._收旧()
         self.写状态()
 
     async def 收旧(self) -> int:
@@ -1452,7 +1450,7 @@ class 池:
             等走 = len([一 for 一 in self.条们 if 一.退役])
         self.上次换新 = time.strftime("%Y-%m-%d %H:%M:%S")
         地 = f"，{self.这批地区}" if self.这批地区 else ""
-        尾 = f"，{等走} 条等回包" if 等走 else (f"，空闲旧线路已下 {丢} 条" if 丢 else "")
+        尾 = f"，{等走} 条交替中" if 等走 else (f"，到期旧线路已下 {丢} 条" if 丢 else "")
         说 = f"已换新{地}，新 {数} 条{尾} {time.strftime('%H:%M:%S')}"
         self.上次补 = 说
         日志.info("%s", 说)
