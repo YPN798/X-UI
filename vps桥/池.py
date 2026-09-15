@@ -89,7 +89,7 @@ def 人读(n: int) -> str:
     "port": 41000,
     "web": "0.0.0.0",
     "web_port": 41001,
-    "pool_size": 60,
+    "pool_size": 500,
     "mode": "round_robin",
     "sticky": "",
     "fail_n": 3,
@@ -105,7 +105,7 @@ def 人读(n: int) -> str:
     "sc_base": "https://global.shanchendaili.com",
     "sc_key": "",
     "sc_code": "",
-    "sc_count": 60,
+    "sc_count": 500,
     "sc_time": 0,
     "sc_protocol": "s5",
     # 三格留空=每批随机一国，一次提够指定条数。钉死了就按钉的提
@@ -122,7 +122,7 @@ def 人读(n: int) -> str:
     "go_pass": "",
     "go_host": "proxy.ipipgo.com",
     "go_port": 1080,
-    "defaults_ver": 8,
+    "defaults_ver": 9,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -133,7 +133,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-15.7"
+版本 = "2026-09-15.8"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -310,6 +310,9 @@ class 池:
                 self.设["sc_protocol"] = 默认["sc_protocol"]
             if 旧版 < 8:
                 self.设["auto_rotate"] = 默认["auto_rotate"]
+            if 旧版 < 9:
+                self.设["pool_size"] = 默认["pool_size"]
+                self.设["sc_count"] = 默认["sc_count"]
             self.设["defaults_ver"] = 默认["defaults_ver"]
         self.条们 = []
         for 一 in 原.get("proxies") or []:
@@ -1066,7 +1069,7 @@ class 池:
         try:
             if 址:
                 求 = Request(址, headers={"User-Agent": "xui-bridge"})
-                with urlopen(求, timeout=20) as r:
+                with urlopen(求, timeout=60) as r:
                     return r.read().decode("utf-8", "replace"), ""
             import subprocess
             出 = subprocess.check_output(令, shell=True, timeout=30, stderr=subprocess.STDOUT)

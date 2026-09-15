@@ -415,9 +415,9 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
         try:
             if 换期 and 现在 - 上次换 >= 换期:
                 上次换 = 现在
-                await asyncio.wait_for(池子.换新(), timeout=90)
+                await asyncio.wait_for(池子.换新(), timeout=180)
             else:
-                await asyncio.wait_for(池子.补齐(), timeout=90)
+                await asyncio.wait_for(池子.补齐(), timeout=180)
         except asyncio.TimeoutError:
             日志.warning("补池/换新超时")
         except Exception as 错:
