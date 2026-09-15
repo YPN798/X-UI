@@ -107,7 +107,7 @@ def 人读(n: int) -> str:
     "sc_code": "",
     "sc_count": 60,
     "sc_time": 0,
-    "sc_protocol": "http",
+    "sc_protocol": "s5",
     # 三格留空=每批随机一国，一次提够指定条数。钉死了就按钉的提
     "sc_cntry": "",
     "sc_state": "",
@@ -122,7 +122,7 @@ def 人读(n: int) -> str:
     "go_pass": "",
     "go_host": "proxy.ipipgo.com",
     "go_port": 1080,
-    "defaults_ver": 6,
+    "defaults_ver": 7,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -133,7 +133,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-15.4"
+版本 = "2026-09-15.5"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -306,6 +306,8 @@ class 池:
             if 旧版 < 6:
                 self.设["sc_base"] = 默认["sc_base"]
                 self.设["sc_protocol"] = 默认["sc_protocol"]
+            if 旧版 < 7:
+                self.设["sc_protocol"] = 默认["sc_protocol"]
             self.设["defaults_ver"] = 默认["defaults_ver"]
         self.条们 = []
         for 一 in 原.get("proxies") or []:
@@ -354,7 +356,7 @@ class 池:
             "sc_code": self.设.get("sc_code") or "",
             "sc_count": int(self.设.get("sc_count") or 1),
             "sc_time": int(self.设.get("sc_time") or 0),
-            "sc_protocol": self.设.get("sc_protocol") or "http",
+            "sc_protocol": self.设.get("sc_protocol") or "s5",
             "sc_cntry": self.设.get("sc_cntry") or "",
             "sc_state": self.设.get("sc_state") or "",
             "sc_city": self.设.get("sc_city") or "",
@@ -999,7 +1001,7 @@ class 池:
             "key": str(self.设.get("sc_key") or "").strip(),
             "count": self.提取条数(数),
             "time": int(self.设.get("sc_time") or 0),
-            "protocol": str(self.设.get("sc_protocol") or "http"),
+            "protocol": str(self.设.get("sc_protocol") or "s5"),
             "type": "json",
             "cntry": 国,
             "state": 州,
@@ -1020,7 +1022,7 @@ class 池:
     def 拉取方案(self) -> str:
         """闪臣接口的三种文本格式都不带协议，只能按套餐参数定。"""
         if self.闪臣开() or self.ipipgo开():
-            s5 = str(self.设.get("sc_protocol") or "http").lower() in ("s5", "socks5")
+            s5 = str(self.设.get("sc_protocol") or "s5").lower() in ("s5", "socks5")
             return "socks5" if s5 else "http"
         return 规范协议(self.设.get("fetch_scheme")) if self.设.get("fetch_scheme") else ""
 
@@ -1475,7 +1477,7 @@ class 池:
             "sc_key": self.设.get("sc_key") or "",
             "sc_count": int(self.设.get("sc_count") or 1),
             "sc_time": int(self.设.get("sc_time") or 0),
-            "sc_protocol": self.设.get("sc_protocol") or "http",
+            "sc_protocol": self.设.get("sc_protocol") or "s5",
             "sc_cntry": self.设.get("sc_cntry") or "",
             "sc_state": self.设.get("sc_state") or "",
             "sc_city": self.设.get("sc_city") or "",
