@@ -39,8 +39,14 @@ def 闪臣说(码: int, 话: str) -> str:
     return 话 or f"错误码 {码}"
 
 
+海外错码 = {
+    -13: 1004, -12: 1001, -14: 1005, -15: 1003,
+    -2: 1005, -4: 2001, -16: 1002, -17: 2001, -18: 1003,
+}
+
+
 def 解信封(文: str) -> tuple[int, str, Any] | None:
-    """闪臣统一返回 {code, message, data}；不是这个形状就返回 None。"""
+    """认两套闪臣信封：flow-api 的 {code,message,data}，海外套餐的 {status,info,list/data}。"""
     串 = (文 or "").strip()
     if not 串.startswith("{"):
         return None
@@ -48,13 +54,26 @@ def 解信封(文: str) -> tuple[int, str, Any] | None:
         包 = json.loads(串)
     except ValueError:
         return None
-    if not isinstance(包, dict) or "code" not in 包:
+    if not isinstance(包, dict):
+        return None
+    if "code" in 包:
+        try:
+            码 = int(包.get("code") or 0)
+        except (TypeError, ValueError):
+            码 = -1
+        return 码, str(包.get("message") or ""), 包.get("data")
+    if "status" not in 包:
         return None
     try:
-        码 = int(包.get("code") or 0)
+        码 = int(包.get("status") or 0)
     except (TypeError, ValueError):
         码 = -1
-    return 码, str(包.get("message") or ""), 包.get("data")
+    码 = 海外错码.get(码, 码)
+    话 = str(包.get("info") or 包.get("message") or "")
+    数 = 包.get("data")
+    if 数 is None and ("list" in 包 or "count" in 包):
+        数 = {k: 包.get(k) for k in ("list", "count") if k in 包}
+    return 码, 话, 数
 
 
 def 遮(密: str) -> str:
@@ -102,12 +121,12 @@ def 人读(n: int) -> str:
     "fetch_cmd": "",
     "fetch_scheme": "",
     "auto_rotate": 120,
-    "sc_base": "https://global.shanchendaili.com",
-    "sc_key": "",
-    "sc_code": "",
+    "sc_base": "https://sch.shanchendaili.com",
+    "sc_key": "HU73ab19f15716616660kMHD",
+    "sc_code": "ypn940815",
     "sc_count": 60,
     "sc_time": 0,
-    "sc_protocol": "s5",
+    "sc_protocol": "http",
     # 三格留空=每批随机一国，一次提够指定条数。钉死了就按钉的提
     "sc_cntry": "",
     "sc_state": "",
@@ -122,7 +141,7 @@ def 人读(n: int) -> str:
     "go_pass": "",
     "go_host": "proxy.ipipgo.com",
     "go_port": 1080,
-    "defaults_ver": 5,
+    "defaults_ver": 6,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -133,7 +152,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-15.1"
+版本 = "2026-09-15.2"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -303,6 +322,12 @@ class 池:
                 self.设["pool_size"] = 默认["pool_size"]
                 self.设["sc_count"] = 默认["sc_count"]
                 self.设["auto_rotate"] = 默认["auto_rotate"]
+            if 旧版 < 6:
+                self.设["sc_base"] = 默认["sc_base"]
+                self.设["sc_key"] = 默认["sc_key"]
+                self.设["sc_code"] = 默认["sc_code"]
+                self.设["sc_protocol"] = 默认["sc_protocol"]
+                self.设["sc_time"] = 默认["sc_time"]
             self.设["defaults_ver"] = 默认["defaults_ver"]
         self.条们 = []
         for 一 in 原.get("proxies") or []:
@@ -757,7 +782,13 @@ class 池:
     # ---- 闪臣动态流量接口 ------------------------------------------------
 
     def 闪臣开(self) -> bool:
-        return bool(str(self.设.get("sc_key") or "").strip())
+        return bool(self.闪臣Key())
+
+    def 闪臣Key(self) -> str:
+        return str(self.设.get("sc_key") or "").strip() or str(默认["sc_key"])
+
+    def 闪臣码(self) -> str:
+        return str(self.设.get("sc_code") or "").strip() or str(默认["sc_code"])
 
     def ipipgo开(self) -> bool:
         return bool(
@@ -795,15 +826,30 @@ class 池:
         return time.time() < float(self.闪臣态.get("码锁到") or 0)
 
     def 可自动白(self) -> bool:
-        return (self.闪臣开() and bool(str(self.设.get("sc_code") or "").strip())
+        return (self.闪臣开() and bool(self.闪臣码())
                 and bool(int(self.设.get("sc_white") or 0)) and not self.码锁着())
 
     def _闪臣址(self, 名: str, 参: dict[str, Any]) -> str:
-        底 = str(self.设.get("sc_base") or "").strip().rstrip("/") or 默认["sc_base"]
-        if not 底.startswith(("http://", "https://")):
-            底 = "https://" + 底
+        """锁死海外套餐页：sch.shanchendaili.com/overseas-api.html。"""
+        动作 = {
+            "get-ip.html": "get_ip",
+            "whitelist-add.html": "addWhiteList",
+            "whitelist-remove.html": "removeWhiteList",
+            "whitelist.html": "whiteList",
+            "traffic-balance.html": "get_traffic",
+        }.get(名, 名.replace(".html", ""))
         净 = {k: v for k, v in 参.items() if v not in (None, "")}
-        return f"{底}/flow-api/{名}?{urlencode(净)}"
+        if 名 == "whitelist-add.html":
+            if "security_code" in 净:
+                净["anquanma"] = 净.pop("security_code")
+            净.pop("remark", None)
+        elif 名 == "whitelist-remove.html":
+            净.pop("security_code", None)
+            净.pop("id", None)
+        净["action"] = 动作
+        if "key" not in 净:
+            净["key"] = self.闪臣Key()
+        return f"https://sch.shanchendaili.com/overseas-api.html?{urlencode(净)}"
 
     def _闪臣调(self, 名: str, 参: dict[str, Any]) -> tuple[int, str, Any]:
         """调一次接口并拆 {code,message,data} 信封，返回 (码, 人话, 数据)。阻塞。"""
@@ -842,14 +888,13 @@ class 池:
         """ip 留空就让闪臣按请求来源 IP 加，正好是本机出口。阻塞。"""
         if not self.闪臣开():
             return False, "没填 API Key"
-        安全码 = str(self.设.get("sc_code") or "").strip()
+        安全码 = self.闪臣码()
         if not 安全码:
             return False, "没填安全码，闪臣要求改白名单必须带安全码"
         码, 说, _ = self._闪臣调("whitelist-add.html", {
-            "key": str(self.设.get("sc_key") or "").strip(),
+            "key": self.闪臣Key(),
             "security_code": 安全码,
             "ip": str(ip or "").strip(),
-            "remark": 备注,
         })
         好 = 码 == 0
         if 码 == 1006:
@@ -864,16 +909,14 @@ class 池:
         return 好, 说
 
     def 删白名单(self, 号: str = "", ip: str = "") -> tuple[bool, str]:
-        安全码 = str(self.设.get("sc_code") or "").strip()
+        安全码 = self.闪臣码()
         if not self.闪臣开() or not 安全码:
             return False, "要先填 API Key 和安全码"
         if not str(号 or "").strip() and not str(ip or "").strip():
             return False, "得给 id 或 ip"
         码, 说, _ = self._闪臣调("whitelist-remove.html", {
-            "key": str(self.设.get("sc_key") or "").strip(),
-            "security_code": 安全码,
-            "id": str(号 or "").strip(),
-            "ip": str(ip or "").strip(),
+            "key": self.闪臣Key(),
+            "ip": str(ip or 号 or "").strip(),
         })
         好 = 码 == 0
         self.闪臣态["白名单说"] = f"{time.strftime('%H:%M:%S')} {'已删除' if 好 else 说}"
@@ -885,24 +928,32 @@ class 池:
         if not self.闪臣开():
             return False, "没填 API Key"
         码, 说, 数 = self._闪臣调("traffic-balance.html", {
-            "key": str(self.设.get("sc_key") or "").strip(),
+            "key": self.闪臣Key(),
         })
         if 码 != 0 or not isinstance(数, dict):
             self.闪臣态["余额说"] = 说
             return False, 说
         文 = str(数.get("traffic_balance_text") or "").strip()
+        if not 文 and 数.get("traffic") is not None:
+            文 = f"{数.get('traffic')} GB"
         if not 文:
             文 = f"{数.get('traffic_balance_gb') or 0} GB"
         self.闪臣态["余额"] = 文
-        self.闪臣态["有套餐"] = bool(数.get("has_package"))
-        self.闪臣态["余额说"] = "" if 数.get("has_package") else "账号没有生效中的流量套餐"
+        if "has_package" in 数:
+            self.闪臣态["有套餐"] = bool(数.get("has_package"))
+        else:
+            try:
+                self.闪臣态["有套餐"] = float(数.get("traffic") or 数.get("traffic_balance_gb") or 0) > 0
+            except (TypeError, ValueError):
+                self.闪臣态["有套餐"] = bool(文)
+        self.闪臣态["余额说"] = "" if self.闪臣态["有套餐"] else "账号没有生效中的流量套餐"
         return True, 文
 
     def 查白名单(self) -> tuple[bool, list[dict]]:
         if not self.闪臣开():
             return False, []
         码, 说, 数 = self._闪臣调("whitelist.html", {
-            "key": str(self.设.get("sc_key") or "").strip(),
+            "key": self.闪臣Key(),
         })
         if 码 != 0:
             self.闪臣态["白名单说"] = 说
@@ -955,7 +1006,7 @@ class 池:
         if go_key:
             步.append("IPIPGO 凭证已更新")
         if self.闪臣开():
-            if not str(self.设.get("sc_code") or "").strip():
+            if not self.闪臣码():
                 步.append("闪臣还没存安全码——加白名单必须要它。")
             else:
                 await asyncio.to_thread(self.加白名单)
@@ -992,14 +1043,11 @@ class 池:
         州 = str(self.设.get("sc_state") or "").strip() if 州 is None else str(州 or "").strip()
         市 = str(self.设.get("sc_city") or "").strip() if 市 is None else str(市 or "").strip()
         return self._闪臣址("get-ip.html", {
-            "key": str(self.设.get("sc_key") or "").strip(),
+            "key": self.闪臣Key(),
             "count": self.提取条数(数),
-            "time": int(self.设.get("sc_time") or 0),
-            "protocol": str(self.设.get("sc_protocol") or "s5"),
-            # 桥是按行读的，只认 user:pass@host:port 且以 \n 分隔
-            "type": "text",
-            "pattern": 1,
-            "textSep": 3,
+            "time": 0,
+            "protocol": "http",
+            "type": "json",
             "cntry": 国,
             "state": 州,
             "city": 市,
@@ -1013,13 +1061,13 @@ class 池:
             键 = str(self.设.get("go_key") or "").strip()
         else:
             址 = self.提取地址(国 or None, None, None) if 国 else self.提取地址()
-            键 = str(self.设.get("sc_key") or "").strip()
+            键 = self.闪臣Key()
         return 址.replace(键, 遮(键)) if 键 and 键 in 址 else 址
 
     def 拉取方案(self) -> str:
         """闪臣接口的三种文本格式都不带协议，只能按套餐参数定。"""
         if self.闪臣开() or self.ipipgo开():
-            s5 = str(self.设.get("sc_protocol") or "s5").lower() in ("s5", "socks5")
+            s5 = str(self.设.get("sc_protocol") or "http").lower() in ("s5", "socks5")
             return "socks5" if s5 else "http"
         return 规范协议(self.设.get("fetch_scheme")) if self.设.get("fetch_scheme") else ""
 
@@ -1036,9 +1084,9 @@ class 池:
             "go_url": self.设.get("go_url") or "",
             "go_user": self.设.get("go_user") or "",
             "有go密": bool(str(self.设.get("go_pass") or "").strip()),
-            "有码": bool(str(self.设.get("sc_code") or "").strip()),
+            "有码": bool(self.闪臣码()),
             # 只报位数，好让人一眼看出存进去的是不是自己那串
-            "码长": len(str(self.设.get("sc_code") or "").strip()),
+            "码长": len(self.闪臣码()),
             "余额": self.闪臣态.get("余额") or "",
             "有套餐": bool(self.闪臣态.get("有套餐")),
             "余额说": self.闪臣态.get("余额说") or "",

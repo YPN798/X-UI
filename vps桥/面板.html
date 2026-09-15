@@ -214,11 +214,11 @@ details.more .form{margin-top:12px}
   <section id="页-提取源" class="hide">
     <div class="card">
       <h2>提取源</h2>
-      <p class="desc">海外动态流量只填下面两格。点开跑会自动加白名单、提 IP、按默认每 2 分钟换 60 条。地区和协议不用管，要改去「设置」。</p>
+      <p class="desc">海外提取已内置。直接点开跑即可：自动加白名单、提 IP。要换 Key 再填两格。</p>
       <form id="闪" class="form">
-        <label class="f wide">闪臣 API Key<input name="sc_key" placeholder="个人中心复制"></label>
+        <label class="f wide">闪臣 API Key<input name="sc_key" placeholder="已内置，留空不用填"></label>
         <label class="f">闪臣安全码
-          <input name="sc_code" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" placeholder="改白名单才要，已保存可留空">
+          <input name="sc_code" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" placeholder="已内置，留空不用填">
         </label>
         <div class="actions" style="grid-column:1/-1">
           <button class="btn pri" type="submit" id="开跑">保存并开跑</button>
