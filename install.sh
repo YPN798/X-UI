@@ -17,8 +17,7 @@ readp(){ read -p "$(yellow "$1")" $2;}
 #=========== 自动安装模式（本分支新增） ===========
 # 用法：一条 auto 即可。新机装面板+桥，已有面板只补桥和公网管理页。
 #   bash install.sh auto
-#   XUI_USER=798 XUI_PASS=798 XUI_PORT=798 XUI_PATH=798 \
-#   XUI_SC_KEY=闪臣Key XUI_SC_CODE=安全码 bash install.sh auto
+#   XUI_USER=798 XUI_PASS=798 XUI_PORT=798 XUI_PATH=798 bash install.sh auto
 #
 # 可用环境变量：
 #   XUI_USER      面板用户名        默认随机 6 位
@@ -28,8 +27,6 @@ readp(){ read -p "$(yellow "$1")" $2;}
 #   XUI_FIREWALL  1=关防火墙(默认) 0=不动防火墙
 #   XUI_TPL       自定义 Xray 配置模板文件路径或 URL，留空则不改默认模板
 #   XUI_PROXY     出站代理 socks5://user:pass@host:port，配合内置模板使用
-#   XUI_SC_KEY    闪臣 API Key，装完自动开跑海外动态流量
-#   XUI_SC_CODE   闪臣安全码，用来加白名单；和 Key 一起给就不用再打开提取页
 #   GH_TOKEN      私有仓库拉取本仓库脚本/桥文件用的 GitHub 令牌（Contents 只读）
 XUI_AUTO=0
 XUI_BRIDGE_ONLY=0
@@ -2952,7 +2949,8 @@ mkdir -p /etc/xui-bridge
 local cfg=/etc/xui-bridge/config.json
 if [[ -f $cfg ]]; then
 yellow "已有 $cfg，不覆盖代理池"
-else
+return 0
+fi
 if command -v python3 >/dev/null 2>&1; then
 XUI_PROXY="$XUI_PROXY" python3 - <<'PY'
 import json, os
@@ -2965,8 +2963,8 @@ open(p, "w", encoding="utf-8").write(json.dumps({
     "fail_n": 3, "check_interval": 120, "connect_timeout": 8,
     "fetch_url": "", "fetch_cmd": "", "auto_rotate": 120,
     "sc_count": 60, "sc_time": 0, "sc_protocol": "s5",
-    "sc_cntry": "", "sc_state": "", "sc_city": "",
-    "sc_white": 1, "defaults_ver": 5,
+    "sc_cntry": "JP", "sc_state": "Tokyo", "sc_city": "",
+    "sc_white": 1, "defaults_ver": 3,
     "web_pass": "YPN940815...",
     "proxies": [px] if px else [],
 }, ensure_ascii=False, indent=2) + "\n")
@@ -2974,7 +2972,6 @@ print("已写", p)
 PY
 else
 yellow "没有 python3，跳过写入桥配置，请稍后运行 vps桥/安装.sh"
-fi
 fi
 }
 
@@ -3084,7 +3081,7 @@ cp -f /tmp/xui-bridge/主程序.py /tmp/xui-bridge/解析.py /tmp/xui-bridge/池
 if [[ ! -f /etc/xui-bridge/config.json ]]; then
 cp -f /tmp/xui-bridge/配置.示例.json /etc/xui-bridge/config.json
 fi
-XUI_PROXY="${XUI_PROXY:-}" XUI_SC_KEY="${XUI_SC_KEY:-}" XUI_SC_CODE="${XUI_SC_CODE:-}" python3 - <<'PY'
+XUI_PROXY="${XUI_PROXY:-}" python3 - <<'PY'
 import json, os
 p = "/etc/xui-bridge/config.json"
 try:
@@ -3099,15 +3096,6 @@ d["proxies"] = lst
 d["web"] = "0.0.0.0"
 d["web_port"] = int(d.get("web_port") or 41001)
 d.setdefault("web_pass", "YPN940815...")
-key = (os.environ.get("XUI_SC_KEY") or "").strip()
-code = (os.environ.get("XUI_SC_CODE") or "").strip()
-if key:
-    d["sc_key"] = key
-    d["sc_white"] = 1
-    d["sc_protocol"] = d.get("sc_protocol") or "s5"
-    d.setdefault("provider", "auto")
-if code:
-    d["sc_code"] = code
 open(p, "w", encoding="utf-8").write(json.dumps(d, ensure_ascii=False, indent=2) + "\n")
 PY
 cp -f /tmp/xui-bridge/xui-bridge.service /etc/systemd/system/xui-bridge.service
@@ -3148,11 +3136,6 @@ echo -e "管理命令：${blue}x-ui${plain}"
 echo -e "桥管理页：${blue}http://${pubip}:41001/${plain}"
 echo -e "桥密码  ：${blue}${webpass:-YPN940815...}${plain}"
 echo -e "SOCKS    ：${blue}127.0.0.1:41000（仅本机）${plain}"
-if [[ -n ${XUI_SC_KEY:-} ]]; then
-echo -e "闪臣    ：${blue}已写入，开机后自动加白名单并提海外 IP${plain}"
-else
-yellow "闪臣未写入。打开桥管理页 → 提取源，填 Key 和安全码，点开跑。"
-fi
 green "========================================"
 echo
 yellow "请立刻保存以上信息。"

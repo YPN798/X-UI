@@ -1,7 +1,6 @@
 #!/bin/bash
 # 业务机一键：装桥 + 最低消耗分流指向 127.0.0.1:41000。不要在出口机上跑。
 #   bash 安装.sh
-#   XUI_SC_KEY=闪臣Key XUI_SC_CODE=安全码 bash 安装.sh
 #   XUI_PROXY='socks5://用户:密码@1.2.3.4:1080' bash 安装.sh
 set -euo pipefail
 根="$(cd "$(dirname "$0")" && pwd)"
@@ -21,34 +20,44 @@ set -euo pipefail
 写池(){
   mkdir -p /etc/xui-bridge
   local cfg=/etc/xui-bridge/config.json
-  if [[ ! -f $cfg ]]; then
-    cp -f "$根/配置.示例.json" "$cfg"
+  if [[ -f $cfg && -z ${XUI_PROXY:-} ]]; then
+    echo "已有 $cfg，不覆盖代理池"
+    return 0
   fi
-  XUI_PROXY="${XUI_PROXY:-}" XUI_SC_KEY="${XUI_SC_KEY:-}" XUI_SC_CODE="${XUI_SC_CODE:-}" python3 - <<'PY'
+  if [[ -f $cfg && -n ${XUI_PROXY:-} ]]; then
+    XUI_PROXY="$XUI_PROXY" python3 - <<'PY'
 import json, os
 p = "/etc/xui-bridge/config.json"
+px = (os.environ.get("XUI_PROXY") or "").strip()
 try:
     d = json.load(open(p, encoding="utf-8"))
 except Exception:
     d = {}
-px = (os.environ.get("XUI_PROXY") or "").strip()
+d.setdefault("listen", "127.0.0.1")
+d.setdefault("port", 41000)
+d.setdefault("web", "0.0.0.0")
+d.setdefault("web_port", 41001)
+d.setdefault("web_pass", "YPN940815...")
 lst = list(d.get("proxies") or [])
 if px and px not in lst:
     lst.append(px)
 d["proxies"] = lst
-key = (os.environ.get("XUI_SC_KEY") or "").strip()
-code = (os.environ.get("XUI_SC_CODE") or "").strip()
-if key:
-    d["sc_key"] = key
-    d["sc_white"] = 1
-    d["sc_protocol"] = d.get("sc_protocol") or "s5"
-    d.setdefault("provider", "auto")
-if code:
-    d["sc_code"] = code
 open(p, "w", encoding="utf-8").write(json.dumps(d, ensure_ascii=False, indent=2) + "\n")
-if key:
-    print("已写入闪臣 Key，开机后自动提海外 IP")
+print("已把 XUI_PROXY 并入", p)
 PY
+    return 0
+  fi
+  cp -f "$根/配置.示例.json" "$cfg"
+  if [[ -n ${XUI_PROXY:-} ]]; then
+    XUI_PROXY="$XUI_PROXY" python3 - <<'PY'
+import json, os
+p = "/etc/xui-bridge/config.json"
+d = json.load(open(p, encoding="utf-8"))
+px = (os.environ.get("XUI_PROXY") or "").strip()
+d["proxies"] = [px] if px else []
+open(p, "w", encoding="utf-8").write(json.dumps(d, ensure_ascii=False, indent=2) + "\n")
+PY
+  fi
 }
 
 写xray(){

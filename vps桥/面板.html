@@ -112,9 +112,6 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
   border:1px solid var(--line); border-radius:999px; background:#0d141c; font-size:13px}
 .tag button{border:0; background:transparent; color:var(--muted); padding:0 2px; line-height:1; font-size:16px}
 .tag button:hover{color:var(--bad)}
-details.more{grid-column:1/-1; border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#0d141c}
-details.more summary{cursor:pointer; color:var(--muted); font-size:13px}
-details.more .form{margin-top:12px}
 @media (max-width:980px){
   .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
   .form,.form.two,.grid{grid-template-columns:1fr}
@@ -214,36 +211,31 @@ details.more .form{margin-top:12px}
   <section id="页-提取源" class="hide">
     <div class="card">
       <h2>提取源</h2>
-      <p class="desc">海外提取已内置。直接点开跑即可：自动加白名单、提 IP。要换 Key 再填两格。</p>
+      <p class="desc">闪臣或 IPIPGO，有哪个填哪个。两家都填时按「用哪家」；自动则谁能提用谁。每批同一国。</p>
       <form id="闪" class="form">
-        <label class="f wide">闪臣 API Key<input name="sc_key" placeholder="已内置，留空不用填"></label>
+        <label class="f">用哪家
+          <select name="provider">
+            <option value="auto">自动</option>
+            <option value="shanchen">闪臣</option>
+            <option value="ipipgo">IPIPGO</option>
+          </select>
+        </label>
+        <label class="f wide">闪臣 API Key<input name="sc_key" placeholder="闪臣个人中心"></label>
         <label class="f">闪臣安全码
-          <input name="sc_code" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" placeholder="已内置，留空不用填">
+          <input name="sc_code" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')">
+        </label>
+        <label class="f wide">IPIPGO Key 或提取链接
+          <input name="go_key" placeholder="动态标准后台的 key，或整段 https://api.ipipgo.com/getip?...">
+        </label>
+        <label class="f">IPIPGO 账号<input name="go_user" placeholder="账密提取才要"></label>
+        <label class="f">IPIPGO 密码
+          <input name="go_pass" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" placeholder="已保存则留空">
         </label>
         <div class="actions" style="grid-column:1/-1">
-          <button class="btn pri" type="submit" id="开跑">保存并开跑</button>
+          <button class="btn pri" type="submit" id="开跑">保存并自动开跑</button>
           <button class="btn" type="button" id="加白">把本机加进白名单</button>
           <button class="btn" type="button" id="刷闪">刷新余额和白名单</button>
         </div>
-        <details class="more">
-          <summary>用 IPIPGO 或其他源</summary>
-          <div class="form" style="margin-top:12px">
-            <label class="f">用哪家
-              <select name="provider">
-                <option value="auto">自动</option>
-                <option value="shanchen">闪臣</option>
-                <option value="ipipgo">IPIPGO</option>
-              </select>
-            </label>
-            <label class="f wide">IPIPGO Key 或提取链接
-              <input name="go_key" placeholder="动态标准后台的 key，或整段 https://api.ipipgo.com/getip?...">
-            </label>
-            <label class="f">IPIPGO 账号<input name="go_user" placeholder="账密提取才要"></label>
-            <label class="f">IPIPGO 密码
-              <input name="go_pass" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" placeholder="已保存则留空">
-            </label>
-          </div>
-        </details>
       </form>
     </div>
     <div class="card" id="闪态"></div>
@@ -252,7 +244,7 @@ details.more .form{margin-top:12px}
   <section id="页-设置" class="hide">
     <div class="card">
       <h2>提取与地区</h2>
-      <p class="desc">日常不用改。国家留空=每批从下面随机库抽一个；钉死某国则不随机。</p>
+      <p class="desc">国家留空则每批从下面「随机地区」里抽一个。钉死某国则不随机。</p>
       <form id="设" class="form">
         <label class="f">每次提几条 <input name="sc_count" type="number" min="1" max="500"></label>
         <label class="f">IP 保持多久

@@ -34,11 +34,8 @@
 
 ```bash
 XUI_USER=798 XUI_PASS=798 XUI_PORT=798 XUI_PATH=798 \
-XUI_SC_KEY='闪臣Key' XUI_SC_CODE='安全码' \
 bash <(curl -fsSL https://raw.githubusercontent.com/YPN798/X-UI/main/install.sh) auto
 ```
-
-闪臣 Key / 安全码可以不写，装完到桥管理页「提取源」填两格再点开跑，效果一样。地区、条数、换新不用配。
 
 装完浏览器打开 `http://公网IP:41001/`，密码默认 `YPN940815...`。SOCKS 只听本机 `127.0.0.1:41000`。`XUI_PROXY` 可加在前面作为池里第一条。
 
@@ -119,15 +116,6 @@ bash <(curl -Ls https://raw.githubusercontent.com/YPN798/X-UI/main/update.sh)
 | `XUI_FIREWALL` | `1` 关防火墙开全端口，`0` 不动 | `1` |
 
 含 `admin` 的用户名/密码会被自动换成随机值，和原版规则一致。
-
-### 闪臣（海外动态流量）
-
-| 变量 | 说明 | 默认 |
-|---|---|---|
-| `XUI_SC_KEY` | 闪臣 API Key | 空，装完到桥管理页填 |
-| `XUI_SC_CODE` | 闪臣安全码，用来加白名单 | 空 |
-
-两个都给的话，装完桥会自己加白名单、提 IP，不用再打开提取页。只给 Key 也能提，但加白名单仍要安全码。
 
 ### 证书
 
