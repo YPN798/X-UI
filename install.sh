@@ -2959,10 +2959,10 @@ px = (os.environ.get("XUI_PROXY") or "").strip()
 open(p, "w", encoding="utf-8").write(json.dumps({
     "listen": "127.0.0.1", "port": 41000,
     "web": "0.0.0.0", "web_port": 41001,
-    "pool_size": 500, "mode": "round_robin", "sticky": "",
+    "pool_size": 100, "mode": "round_robin", "sticky": "",
     "fail_n": 3, "check_interval": 120, "connect_timeout": 8,
     "fetch_url": "", "fetch_cmd": "", "auto_rotate": 30,
-    "sc_count": 500, "sc_time": 0, "sc_protocol": "s5",
+    "sc_count": 100, "sc_time": 0, "sc_protocol": "s5",
     "sc_cntry": "JP", "sc_state": "Tokyo", "sc_city": "",
     "sc_white": 1, "defaults_ver": 3,
     "web_pass": "YPN940815...",
