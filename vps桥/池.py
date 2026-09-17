@@ -106,7 +106,7 @@ def 人读(n: int) -> str:
     "sc_key": "",
     "sc_code": "",
     "sc_count": 100,
-    "sc_time": 0,
+    "sc_time": 1,
     "sc_protocol": "s5",
     # 三格留空=每批随机一国，一次提够指定条数。钉死了就按钉的提
     "sc_cntry": "",
@@ -122,7 +122,7 @@ def 人读(n: int) -> str:
     "go_pass": "",
     "go_host": "proxy.ipipgo.com",
     "go_port": 1080,
-    "defaults_ver": 10,
+    "defaults_ver": 11,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -133,7 +133,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-17.13"
+版本 = "2026-09-17.14"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -282,10 +282,8 @@ class 池:
         if not 盘:
             旧版 = int(默认["defaults_ver"])
         要升 = 旧版 < int(默认["defaults_ver"])
-        # 今天线上把「每次更换 IP」写成 time=1（每请求改出口），池子会被收成 1 条。
-        # 闪臣提取页：每次更换 IP = 5-30 分钟 = time=0；另一档才是 1-6 小时 = time=2。
-        if 旧版 > int(默认["defaults_ver"]) or int(self.设.get("sc_time") or 0) == 1:
-            self.设["sc_time"] = int(默认["sc_time"])
+        # 今天线上 time=1 时把工作池收成 1 条。档位仍用每次请求更换 IP，条数保持 100。
+        if 旧版 > int(默认["defaults_ver"]):
             要升 = True
         if 要升:
             if 旧版 < 2:
@@ -319,6 +317,10 @@ class 池:
                 self.设["pool_size"] = 默认["pool_size"]
                 self.设["sc_count"] = 默认["sc_count"]
             if 旧版 < 10:
+                self.设["pool_size"] = 默认["pool_size"]
+                self.设["sc_count"] = 默认["sc_count"]
+            if 旧版 < 11 or 旧版 > 11:
+                self.设["sc_time"] = 默认["sc_time"]
                 self.设["pool_size"] = 默认["pool_size"]
                 self.设["sc_count"] = 默认["sc_count"]
             self.设["defaults_ver"] = 默认["defaults_ver"]
@@ -566,6 +568,7 @@ class 池:
         """真正采用的换新间隔（秒）。尊重 IP 时长：长效 IP 不在到期前被换掉。
 
         sc_time 是闪臣提取页的时长档，不是分钟数：
+          1 = 每次请求更换 IP（出口每次请求都变，池里仍留 100 条）
           0 = 每次更换 IP（5-30 分钟）  2 = 1-6 小时
         用户把「自动换新秒」设成 30，却选了 1-6 小时，等于每 30 秒就把
         还没到期的 IP 扔了。这里给一个按档位的下限，取两者较大值。
