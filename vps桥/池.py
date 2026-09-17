@@ -125,7 +125,7 @@ def 人读(n: int) -> str:
     "fetch_url": "",
     "fetch_cmd": "",
     "fetch_scheme": "",
-    "auto_rotate": 120,
+    "auto_rotate": 30,
     "sc_base": "https://global.shanchendaili.com",
     "sc_key": "",
     "sc_code": "",
@@ -149,7 +149,7 @@ def 人读(n: int) -> str:
     "go_white_base": "https://www.ipipgo.com",
     "go_white_key": "17633613790",
     "go_sign": "27eeb29319715c7ad60faf99008d010f",
-    "defaults_ver": 15,
+    "defaults_ver": 16,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -160,7 +160,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-17.11"
+版本 = "2026-09-17.12"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -411,6 +411,10 @@ class 池:
                 self.设["sc_time"] = 1
                 if not str(self.设.get("go_key") or "").strip():
                     self.设["go_key"] = 默认["go_key"]
+            if 旧版 < 16:
+                # 之前默认 120 秒换新，被当成“长期挂着”。改成 30 秒快换
+                self.设["sc_time"] = 1
+                self.设["auto_rotate"] = 默认["auto_rotate"]
             self.设["defaults_ver"] = 默认["defaults_ver"]
         if not str(self.设.get("go_key") or "").strip() and 默认.get("go_key"):
             self.设["go_key"] = 默认["go_key"]
@@ -722,29 +726,25 @@ class 池:
             return int(默认["update_minutes"])
 
     def 有效换期(self) -> int:
-        """真正采用的换新间隔（秒）。尊重 IP 时长：长效 IP 不在到期前被换掉。
+        """真正采用的换新间隔（秒）。到点就丢旧提新，绝不让工作代理长期挂着。
 
-        sc_time 是闪臣的时长档，不是分钟数：
-          1 = 每请求一换（默认）  0 = 5-30 分钟  2 = 1-6 小时
-        用户把「自动换新秒」设成 30，却选了 1-6 小时，等于每 30 秒就把
-        还没到期的 IP 扔了。这里给一个按档位的下限，取两者较大值。
+        sc_time 是闪臣的时长档：
+          1 = 每请求档（尽快换，默认）  0 = 5-30 分钟  2 = 1-6 小时
         """
         设换 = max(0, int(self.设.get("auto_rotate") or 0))
         模 = int(self.设.get("sc_time") or 0)
-        if 模 == 1:
-            return 0  # 出口每次请求变，闪臣工作线留 1 条即可
         if 设换 <= 0:
-            return 0  # 用户主动关了自动换新
-        下限 = 3600 if 模 == 2 else 30
+            # 用户没设，也按档位给个默认，别永久不换
+            return 15 if 模 == 1 else (3600 if 模 == 2 else 120)
+        下限 = 3600 if 模 == 2 else (10 if 模 == 1 else 30)
         return max(设换, 下限)
 
     def 换说(self) -> str:
         期 = self.有效换期()
         if 期 <= 0:
-            模 = int(self.设.get("sc_time") or 0)
-            return "每请求一换" if 模 == 1 else "关"
+            return "关"
         设换 = max(0, int(self.设.get("auto_rotate") or 0))
-        return f"每 {期} 秒" + ("（按 IP 时长抬到下限）" if 期 > 设换 else "")
+        return f"每 {期} 秒" + ("（按 IP 时长抬到下限）" if 设换 and 期 > 设换 else "")
 
     def 下次换秒(self) -> int:
         """还有多少秒换下一批。没开自动换新返回 -1。"""
@@ -1916,14 +1916,7 @@ class 池:
             份 = len(源们)
             这份 = max(1, 数 // 份)
             for 源 in 源们:
-                if 源 == "shanchen" and self.闪臣每求():
-                    已闪 = sum(1 for 一 in self.条们
-                              if not 一.退役 and 闪臣主机 in 一.主机)
-                    if 已闪 >= 1:
-                        continue
-                    批 = self._抽源(源, *地, 1)
-                else:
-                    批 = self._抽源(源, *地, 这份)
+                批 = self._抽源(源, *地, 这份)
                 if 批:
                     用过.append(源)
                 for 信 in 批:
@@ -1933,16 +1926,13 @@ class 池:
                     见.add(k)
                     出.append(信)
             if 0 < len(出) < 数 and 用过:
-                补源 = next((x for x in 用过
-                             if not (x == "shanchen" and self.闪臣每求())), "")
-                if 补源:
-                    批 = self._抽源(补源, *地, 数 - len(出))
-                    for 信 in 批:
-                        k = f"{信.get('方案')}|{信.get('主机')}|{信.get('端口')}|{信.get('用户')}"
-                        if k in 见:
-                            continue
-                        见.add(k)
-                        出.append(信)
+                批 = self._抽源(用过[0], *地, 数 - len(出))
+                for 信 in 批:
+                    k = f"{信.get('方案')}|{信.get('主机')}|{信.get('端口')}|{信.get('用户')}"
+                    if k in 见:
+                        continue
+                    见.add(k)
+                    出.append(信)
             if 出:
                 self.上次源 = "混合" if len(用过) > 1 else (用过[0] if 用过 else 源们[0])
                 self._记这批(*地)
@@ -2002,7 +1992,9 @@ class 池:
             说 = "未配置提取接口，无法换新"
             self.上次补 = 说
             return 说
-        批 = await asyncio.to_thread(self.拉取一批, None, True)
+        # 每请求档只留少量工作线，别为了留 1 条去提 100 条
+        换数 = self.工作目标() if self.闪臣每求() else None
+        批 = await asyncio.to_thread(self.拉取一批, 换数, True)
         if not 批:
             说 = self.上次补 or "换新失败，保持原池"
             if "换新失败" not in 说:
