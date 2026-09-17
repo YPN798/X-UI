@@ -122,7 +122,7 @@ def 人读(n: int) -> str:
     "go_pass": "",
     "go_host": "proxy.ipipgo.com",
     "go_port": 1080,
-    "defaults_ver": 11,
+    "defaults_ver": 12,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -133,7 +133,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-17.14"
+版本 = "2026-09-17.15"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -323,6 +323,9 @@ class 池:
                 self.设["sc_time"] = 默认["sc_time"]
                 self.设["pool_size"] = 默认["pool_size"]
                 self.设["sc_count"] = 默认["sc_count"]
+            if 旧版 < 12 or 旧版 > 12:
+                self.设["sc_count"] = 默认["sc_count"]
+                self.设["pool_size"] = 默认["pool_size"]
             self.设["defaults_ver"] = 默认["defaults_ver"]
         self.条们 = []
         for 一 in 原.get("proxies") or []:
@@ -996,9 +999,15 @@ class 池:
         )
 
     def 提取条数(self, 数: int | None = None) -> int:
+        目标 = int(self.设.get("sc_count") or self.设.get("pool_size") or 100)
+        目标 = max(1, min(500, 目标))
         if 数 is None:
-            数 = int(self.设.get("sc_count") or self.设.get("pool_size") or 1)
-        return max(1, min(500, int(数)))
+            return 目标
+        数 = max(1, min(500, int(数)))
+        # 每次请求更换 IP 也按设定条数提，不准再被收成 1
+        if int(self.设.get("sc_time") or 0) == 1 and 数 < 目标:
+            return 目标
+        return 数
 
     def 提取地址(self, 国: str | None = None, 州: str | None = None, 市: str | None = None,
                 数: int | None = None) -> str:
@@ -1142,8 +1151,15 @@ class 池:
         if isinstance(包, dict):
             列 = None
             for k in ("data", "list", "result", "ips", "rows"):
-                if isinstance(包.get(k), list):
-                    列 = 包[k]
+                v = 包.get(k)
+                if isinstance(v, list):
+                    列 = v
+                    break
+                if isinstance(v, dict) and (v.get("ip") or v.get("server") or v.get("host") or v.get("sever")):
+                    列 = [v]
+                    break
+                if isinstance(v, str) and v.strip():
+                    列 = [v]
                     break
             if 列 is None and isinstance(包.get("data"), dict):
                 for k in ("list", "ips", "rows"):
@@ -1338,7 +1354,34 @@ class 池:
         return 列 or list(库)
 
     def _抽地(self, 国: str, 州: str, 市: str, 数: int) -> list[dict]:
-        return self._抽一次(self.提取地址(国, 州, 市, 数=数), "")
+        出 = self._抽一次(self.提取地址(国, 州, 市, 数=数), "")
+        if 出 or 数 <= 1:
+            return 出
+        # 闪臣每次请求档有时无视 count，只吐 1 条，改成按 1 条再提
+        return self._抽一次(self.提取地址(国, 州, 市, 数=1), "")
+
+    def _抽满(self, 源: str, 国: str, 州: str, 市: str, 数: int) -> list[dict]:
+        """提到指定条数为止。接口一次只给 1 条就连提。"""
+        出: list[dict] = []
+        见: set[str] = set()
+        空 = 0
+        while len(出) < 数 and 空 < 8:
+            批 = self._抽源(源, 国, 州, 市, 数 - len(出))
+            if not 批:
+                空 += 1
+                continue
+            新 = 0
+            for 一 in 批:
+                k = f"{一.get('主机')}|{一.get('端口')}|{一.get('用户')}"
+                if k in 见:
+                    continue
+                见.add(k)
+                出.append(一)
+                新 += 1
+                if len(出) >= 数:
+                    break
+            空 = 0 if 新 else 空 + 1
+        return 出
 
     def _地区候选(self, 换国: bool) -> list[tuple[str, str, str]]:
         钉国, 钉州, 钉市 = self._钉地区()
@@ -1374,11 +1417,11 @@ class 池:
         最后 = ""
         for 源 in 源们:
             for 地 in self._地区候选(换国):
-                出 = self._抽源(源, *地, 数)
+                出 = self._抽满(源, *地, 数)
                 if 出:
                     self.上次源 = 源
                     self._记这批(*地)
-                    说 = f"{self.源名(源)} 这批 {self.这批地区}，一次 {len(出)} 条"
+                    说 = f"{self.源名(源)} 这批 {self.这批地区}，提到 {len(出)}/{数} 条"
                     self.上次补 = 说
                     日志.info("%s", 说)
                     return 出
