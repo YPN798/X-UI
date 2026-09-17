@@ -89,6 +89,15 @@ def 拆ipipgo白(文: str) -> dict[str, str]:
     return {"key": 键, "sign": 签}
 
 
+def 时文(秒: float) -> str:
+    秒 = max(0, int(秒 or 0))
+    if 秒 < 60:
+        return f"{秒} 秒"
+    if 秒 < 3600:
+        return f"{秒 // 60} 分"
+    return f"{秒 // 3600} 小时 {(秒 % 3600) // 60} 分"
+
+
 def 人读(n: int) -> str:
     n = max(0, int(n or 0))
     if n < 1024:
@@ -151,7 +160,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-17.4"
+版本 = "2026-09-17.5"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -224,6 +233,28 @@ class 条:
         # 换新时先入新一批，旧的标退役：不再接新连接，等已有连接把回包走完
         self.退役 = False
         self.退役于 = 0.0
+        try:
+            self.入于 = float(信.get("入于") or 0)
+        except (TypeError, ValueError):
+            self.入于 = 0.0
+        try:
+            self.工作于 = float(信.get("工作于") or 0)
+        except (TypeError, ValueError):
+            self.工作于 = 0.0
+        if self.档 == "工作" and not self.工作于:
+            self.工作于 = time.time()
+        if not self.入于:
+            self.入于 = time.time()
+
+    def 家(self) -> str:
+        if 闪臣主机 in self.主机:
+            return "shanchen"
+        if ipipgo主机 in self.主机:
+            return "ipipgo"
+        return "手加"
+
+    def 家名(self) -> str:
+        return {"shanchen": "闪臣", "ipipgo": "IPIPGO", "手加": "手加"}.get(self.家(), "手加")
 
     def 键(self) -> str:
         return f"{self.方案}|{self.主机}|{self.端口}|{self.用户}"
@@ -238,6 +269,16 @@ class 条:
         })
 
     def 快照(self) -> dict[str, Any]:
+        now = time.time()
+        合 = self.上行 + self.下行
+        工秒 = (now - self.工作于) if self.档 == "工作" and self.工作于 else 0
+        入秒 = (now - self.入于) if self.入于 else 0
+        if self.档 == "提取":
+            验 = "待验" if self.失败 <= 0 else f"异常 {self.失败} 次"
+        elif self.健康:
+            验 = "正常"
+        else:
+            验 = "摘除"
         return {
             "号": self.号,
             "地址": self.脱敏(),
@@ -246,20 +287,29 @@ class 条:
                    ("提取" if self.档 == "提取" else
                     ("手加" if self.来源 == "手加" else "工作"))),
             "来源原": self.来源,
+            "家": self.家(),
+            "家名": self.家名(),
             "档": self.档,
             "批": self.批,
             "退役": self.退役,
             "启用": self.启用,
             "健康": self.健康,
             "失败": self.失败,
+            "验活": 验,
             "连接": self.连接,
             "上行": self.上行,
             "下行": self.下行,
+            "合计": 合,
             "上行文": 人读(self.上行),
             "下行文": 人读(self.下行),
+            "合计文": 人读(合),
             "上次错误": self.上次错误,
             "上次切换": self.上次切换,
             "出口": self.出口,
+            "入于": self.入于,
+            "工作于": self.工作于,
+            "入池文": 时文(入秒) if self.入于 else "",
+            "工作文": 时文(工秒) if self.档 == "工作" and self.工作于 else "",
         }
 
 
@@ -378,6 +428,14 @@ class 池:
                     入.健康 = 健
                 if not 档:
                     入.档 = "工作" if 入.健康 else "提取"
+                if isinstance(生, dict):
+                    try:
+                        if 生.get("入于"):
+                            入.入于 = float(生["入于"])
+                        if 生.get("工作于"):
+                            入.工作于 = float(生["工作于"])
+                    except (TypeError, ValueError):
+                        pass
             except ValueError as 错:
                 日志.warning("跳过非法代理：%s", 错)
         self._复流量()
@@ -437,7 +495,9 @@ class 池:
             "随机国库": self.国库(),
             # 来源必须一起存，否则重启后拉取来的全变成手加，换新再也换不掉它们
             "proxies": [{"串": 一.串(), "来源": 一.来源, "档": 一.档,
-                         "批": 一.批, "健康": 一.健康} for 一 in self.条们 if not 一.退役],
+                         "批": 一.批, "健康": 一.健康,
+                         "入于": 一.入于, "工作于": 一.工作于}
+                        for 一 in self.条们 if not 一.退役],
         }
         临时 = self.径.with_suffix(self.径.suffix + ".tmp")
         临时.write_text(json.dumps(出, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -547,8 +607,11 @@ class 池:
                     已.健康 = False
                     已.失败 = 0
                     已.出口 = ""
+                    已.入于 = time.time()
                 elif 档 == "工作":
                     已.档 = "工作"
+                    if not 已.工作于:
+                        已.工作于 = time.time()
                 return 已
         入 = dict(信)
         入["档"] = 档 or "提取"
@@ -815,7 +878,10 @@ class 池:
             一.上次错误 = ""
             if 一.档 != "工作":
                 一.档 = "工作"
+                一.工作于 = time.time()
                 日志.info("升入工作池 %s", 一.脱敏())
+            elif not 一.工作于:
+                一.工作于 = time.time()
             self._挤旧工作()
             self.写状态()
 
@@ -1317,6 +1383,88 @@ class 池:
             "地区": self.地区说(),
         }
 
+    def 源况(self) -> dict[str, Any]:
+        s = self.闪臣快照()
+        本 = str(s.get("本机IP") or "")
+
+        def 闪臣():
+            if not self.闪臣开():
+                return {
+                    "开": False, "正常": False, "态": "未启用",
+                    "说": "没填 API Key", "有码": False, "码长": 0,
+                    "已加白": False, "余额": "", "余额说": "",
+                }
+            硬: list[str] = []
+            软: list[str] = []
+            if not s.get("有码"):
+                硬.append("没填安全码")
+            if 本 and not s.get("闪臣已加白"):
+                硬.append("本机不在白名单")
+            elif not 本:
+                软.append("还没查到本机 IP")
+            if s.get("余额说"):
+                软.append(str(s["余额说"]))
+            正常 = not 硬
+            说 = " · ".join(硬) if 硬 else ("配置正常" + ((" · " + " · ".join(软)) if 软 else ""))
+            return {
+                "开": True, "正常": 正常, "态": "正常" if 正常 else "异常",
+                "说": 说, "有码": bool(s.get("有码")), "码长": int(s.get("码长") or 0),
+                "已加白": bool(s.get("闪臣已加白")),
+                "余额": s.get("余额") or "", "余额说": s.get("余额说") or "",
+            }
+
+        def 果():
+            if not self.ipipgo开():
+                说 = "没填提取 Key"
+                if self.ipipgo白开():
+                    说 += " · 白名单接口已内置"
+                return {
+                    "开": False, "白开": self.ipipgo白开(), "正常": False,
+                    "态": "未启用", "说": 说, "已加白": bool(s.get("ipipgo已加白")),
+                    "有签": bool(s.get("有go签")),
+                }
+            硬 = []
+            软 = []
+            if not self.ipipgo白开():
+                硬.append("没配白名单签名")
+            if 本 and not s.get("ipipgo已加白"):
+                硬.append("本机不在白名单")
+            elif not 本:
+                软.append("还没查到本机 IP")
+            正常 = not 硬
+            说 = " · ".join(硬) if 硬 else ("配置正常" + ((" · " + " · ".join(软)) if 软 else ""))
+            return {
+                "开": True, "白开": self.ipipgo白开(), "正常": 正常,
+                "态": "正常" if 正常 else "异常", "说": 说,
+                "已加白": bool(s.get("ipipgo已加白")), "有签": bool(s.get("有go签")),
+            }
+
+        家工 = {"闪臣": 0, "IPIPGO": 0, "手加": 0}
+        家提 = {"闪臣": 0, "IPIPGO": 0, "手加": 0}
+        待验 = 异常 = 0
+        for 一 in self.条们:
+            if 一.退役:
+                continue
+            名 = 一.家名()
+            if 一.档 == "工作" and 一.健康:
+                家工[名] = 家工.get(名, 0) + 1
+            elif 一.档 == "提取":
+                家提[名] = 家提.get(名, 0) + 1
+                if 一.失败 > 0:
+                    异常 += 1
+                else:
+                    待验 += 1
+        return {
+            "闪臣": 闪臣(),
+            "IPIPGO": 果(),
+            "本机IP": 本,
+            "选": s.get("供应商选") or "auto",
+            "家工": 家工,
+            "家提": 家提,
+            "待验": 待验,
+            "异常": 异常,
+        }
+
     # ---- 提取与补池 ------------------------------------------------------
 
     def 有拉取源(self) -> bool:
@@ -1790,6 +1938,7 @@ class 池:
             "工作": len(self.健康们()),
             "提取": len(self.提取们()),
             "总数": len(self.条们),
+            "源况": self.源况(),
             "上行": sum(一.上行 for 一 in self.条们),
             "下行": sum(一.下行 for 一 in self.条们),
             "上行文": 人读(sum(一.上行 for 一 in self.条们)),
