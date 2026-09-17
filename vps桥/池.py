@@ -106,7 +106,7 @@ def 人读(n: int) -> str:
     "sc_key": "",
     "sc_code": "",
     "sc_count": 100,
-    "sc_time": 0,
+    "sc_time": 1,
     "sc_protocol": "s5",
     # 三格留空=每批随机一国，一次提够指定条数。钉死了就按钉的提
     "sc_cntry": "",
@@ -122,7 +122,7 @@ def 人读(n: int) -> str:
     "go_pass": "",
     "go_host": "proxy.ipipgo.com",
     "go_port": 1080,
-    "defaults_ver": 13,
+    "defaults_ver": 14,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -133,7 +133,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-17.16"
+版本 = "2026-09-17.17"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -327,6 +327,10 @@ class 池:
                 self.设["sc_count"] = 默认["sc_count"]
                 self.设["pool_size"] = 默认["pool_size"]
             if 旧版 != 13:
+                self.设["sc_time"] = 默认["sc_time"]
+                self.设["sc_count"] = 默认["sc_count"]
+                self.设["pool_size"] = 默认["pool_size"]
+            if 旧版 != 14:
                 self.设["sc_time"] = 默认["sc_time"]
                 self.设["sc_count"] = 默认["sc_count"]
                 self.设["pool_size"] = 默认["pool_size"]
