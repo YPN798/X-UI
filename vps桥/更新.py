@@ -16,7 +16,6 @@ import ast
 import asyncio
 import json
 import logging
-import re
 import shutil
 import subprocess
 import tempfile
@@ -73,121 +72,21 @@ def 本地版本() -> str:
         return "未知"
 
 
-_版本行 = re.compile(r'^版本\s*=\s*["\']([^"\']+)["\']')
-_提交缓存 = {"时": 0.0, "值": ""}
+def _下一个(底: str, 名: str, 超时: float = 60) -> bytes:
+    # 带时间戳绕开 CDN 缓存，不然常拉回几分钟前的旧内容
+    址 = f"{底.rstrip('/')}/{quote('vps桥')}/{quote(名)}?t={int(time.time())}"
+    with urlopen(Request(址, headers={"User-Agent": "xui-bridge"}), timeout=超时) as r:
+        return r.read()
 
 
-def _头() -> dict[str, str]:
-    return {
-        "User-Agent": "xui-bridge",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-        "Accept": "*/*",
-    }
-
-
-def _仓(底: str) -> tuple[str, str]:
-    段 = 底.rstrip("/").split("/")
-    try:
-        i = 段.index("raw.githubusercontent.com")
-        return 段[i + 1], 段[i + 2]
-    except (ValueError, IndexError):
-        return "YPN798", "X-UI"
-
-
-def _最新提交(底: str) -> str:
-    """问 GitHub 当前 main 的 SHA。raw 的 /main/ 经常被 CDN 缓存成旧文件。"""
-    now = time.time()
-    if _提交缓存["值"] and now - float(_提交缓存["时"] or 0) < 60:
-        return str(_提交缓存["值"])
-    主, 仓 = _仓(底)
-    址 = f"https://api.github.com/repos/{主}/{仓}/commits/main"
-    求 = Request(址, headers={**_头(), "Accept": "application/vnd.github+json"})
-    with urlopen(求, timeout=20) as r:
-        包 = json.loads(r.read().decode("utf-8", "replace"))
-    提交 = str(包.get("sha") or "")
-    if not 提交:
-        raise ValueError("GitHub 没返回提交号")
-    _提交缓存["时"] = now
-    _提交缓存["值"] = 提交
-    return 提交
-
-
-def _地址们(底: str, 名: str, 提交: str = "") -> list[str]:
-    路径 = f"{quote('vps桥')}/{quote(名)}"
-    主, 仓 = _仓(底)
-    出: list[str] = []
-    if 提交:
-        出.append(f"https://raw.githubusercontent.com/{主}/{仓}/{提交}/{路径}")
-        出.append(f"https://cdn.jsdelivr.net/gh/{主}/{仓}@{提交}/{路径}")
-    出.append(f"{底.rstrip('/')}/{路径}")
-    出.append(f"https://cdn.jsdelivr.net/gh/{主}/{仓}@main/{路径}")
-    # 去重保序
-    见: set[str] = set()
-    净 = []
-    for 一 in 出:
-        if 一 not in 见:
-            见.add(一)
-            净.append(一)
-    return 净
-
-
-def _痕(*段: str) -> bytes:
-    # 拆开写，避免本文件自己带齐错误页句子，被旧校验当成网页丢掉
-    return "".join(段).encode()
-
-
-# 只认真正的 CDN/GitHub 错误页。句子拆开，源码里不会出现完整痕迹。
-_错页 = (
-    _痕("404: ", "not found"),
-    _痕("couldn", "'t find the requested file"),
-    _痕("this is not the web page ", "you are looking for"),
-    _痕("repository ", "not found"),
-    _痕("<title>", "404"),
-    _痕("failed to ", "fetch"),
-    _痕("cannot find ", "package"),
-)
-
-
-def _像文件(名: str, 数据: bytes) -> bool:
-    if not 数据 or not 数据.strip():
-        return False
-    头 = 数据.lstrip()[:80].lower()
-    像网页 = 头.startswith(b"<!doctype") or 头.startswith(b"<html")
-    if 名.endswith((".html", ".htm")):
-        低 = 数据[:8000].lower()
-        if any(痕 in 低 for 痕 in _错页):
-            return False
-        return (b"xui-bridge" in 低
-                or "桥控制台".encode("utf-8") in 数据[:8000]
-                or b"<html" in 低 or b"<!doctype" in 低)
-    if 像网页:
-        return False
-    return True
-
-
-def _下一个(底: str, 名: str, 超时: float = 60, 提交: str = "") -> bytes:
-    错们: list[str] = []
-    for 址 in _地址们(底, 名, 提交):
-        try:
-            with urlopen(Request(址, headers=_头()), timeout=超时) as r:
-                数据 = r.read()
-        except Exception as 错:
-            错们.append(f"{址}：{错}")
-            continue
-        if _像文件(名, 数据):
-            return 数据
-        错们.append(f"{址} 返回了网页而不是文件")
-    raise OSError("；".join(错们[:3]) or "没有可用的下载地址")
-
-
-def 远端版本(底: str, 提交: str = "") -> str:
-    """只下 池.py 看一眼版本号，用来判断值不值得更新。"""
-    文 = _下一个(底, "池.py", 提交=提交).decode("utf-8", "replace")
+def 远端版本(底: str) -> str:
+    """只下 池.py 看一眼版本号，几十 KB，用来判断值不值得更新。"""
+    文 = _下一个(底, "池.py").decode("utf-8", "replace")
     for 行 in 文.splitlines():
-        m = _版本行.match(行.strip())
-        if m:
-            return m.group(1)
+        行 = 行.strip()
+        if 行.startswith("版本") and "=" in 行:
+            值 = 行.split("=", 1)[1].strip()
+            return 值.strip('"').strip("'")
     return ""
 
 
@@ -213,26 +112,20 @@ def 拉一轮(底: str) -> tuple[bool, str]:
     if not 装在.is_dir():
         return False, f"{装在} 不在，这台机器不是用安装脚本装的，不自动更新"
     旧 = 本地版本()
-    提交 = ""
     try:
-        提交 = _最新提交(底)
-    except Exception as 错:
-        日志.warning("拿提交号失败，改走 raw/main：%s", 错)
-    try:
-        新 = 远端版本(底, 提交)
+        新 = 远端版本(底)
     except Exception as 错:
         return False, f"查版本失败：{错}"
     if not 新:
         return False, "远端 池.py 里没找到版本号"
     if 新 == 旧:
-        尾 = f"（提交 {提交[:7]}）" if 提交 else ""
-        return False, f"已经是最新 {旧}{尾}"
+        return False, f"已经是最新 {旧}"
 
     临 = Path(tempfile.mkdtemp(prefix="xui-bridge-更新-"))
     try:
         for 名 in 要更的:
             try:
-                数据 = _下一个(底, 名, 提交=提交)
+                数据 = _下一个(底, 名)
                 _校验(名, 数据)
             except Exception as 错:
                 return False, f"{名} 拉取或校验没过，这轮不动：{错}"

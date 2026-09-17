@@ -58,7 +58,7 @@ _饼干名 = "xui_bridge"
      "body": {"码": "TW"}},
     {"method": "GET", "path": "/api/panel", "desc": "同机 X-UI 面板地址，无需登录"},
     {"method": "POST", "path": "/api/set", "desc": "改设置，只改传入的字段。返回最新 config",
-     "body": {"sc_cntry": "JP", "pool_size": 100, "auto_rotate": 120}},
+     "body": {"sc_cntry": "JP", "pool_size": 100, "auto_rotate": 30}},
     {"method": "POST", "path": "/api/fill", "desc": "按目标条数补池"},
     {"method": "POST", "path": "/api/rotate", "desc": "先提新一批，旧拉取线路退役：新连接走新 IP，旧连接把回包走完再丢。手加保留"},
     {"method": "POST", "path": "/api/add", "desc": "手动加代理。串=多行文本，或 proxies=数组",
@@ -66,10 +66,10 @@ _饼干名 = "xui_bridge"
     {"method": "POST", "path": "/api/del", "desc": "按号删一条", "body": {"id": "…"}},
     {"method": "POST", "path": "/api/clear", "desc": "清空整池"},
     {"method": "POST", "path": "/api/sc/setup", "desc": "写入提取源并自动开跑",
-     "body": {"provider": "auto", "key": "闪臣key", "code": "安全码", "go_key": "", "go_white": ""}},
-    {"method": "POST", "path": "/api/sc/white", "desc": "把本机或指定 IP 加进闪臣 / IPIPGO 白名单",
+     "body": {"provider": "auto", "key": "闪臣key", "code": "安全码", "go_key": ""}},
+    {"method": "POST", "path": "/api/sc/white", "desc": "把本机或指定 IP 加进闪臣白名单",
      "body": {"ip": "", "备注": "xui-bridge"}},
-    {"method": "POST", "path": "/api/sc/unwhite", "desc": "从白名单删除", "body": {"id": "", "ip": "", "家": ""}},
+    {"method": "POST", "path": "/api/sc/unwhite", "desc": "从白名单删除", "body": {"id": "", "ip": ""}},
     {"method": "POST", "path": "/api/sc/refresh", "desc": "刷新余额和白名单"},
     {"method": "POST", "path": "/api/update", "desc": "立刻检查并更新桥代码"},
     {"method": "GET", "path": "/api/stats", "desc": "每日流量：今日消耗 + 最近 60 天表"},
@@ -98,19 +98,16 @@ def 接口目录() -> dict:
         },
         "接口": [dict(一) for 一 in 接口表],
         "字段": {
-            "health": ["版本", "listen", "web", "健康", "工作", "提取", "总数", "供应商", "这批地区", "上次补", "上次换新"],
-            "池条目": ["号", "地址", "方案", "来源", "档", "家", "家名", "退役", "启用", "健康",
-                      "失败", "验活", "连接", "上行", "下行", "合计", "上行文", "下行文", "合计文",
-                      "出口", "工作文", "入池文", "上次错误", "上次切换"],
-            "源况": ["闪臣", "IPIPGO", "本机IP", "选", "家工", "家提", "待验", "异常"],
+            "health": ["版本", "listen", "web", "健康", "总数", "供应商", "这批地区", "上次补", "上次换新"],
+            "池条目": ["号", "地址", "方案", "来源", "退役", "启用", "健康", "失败", "连接",
+                      "上行", "下行", "上行文", "下行文", "出口", "上次错误", "上次切换"],
             "日表条目": ["日", "上行", "下行", "合计", "上行文", "下行文", "合计文"],
             "可写": ["mode", "sticky", "fetch_url", "fetch_cmd", "fetch_scheme",
                     "sc_base", "sc_key", "sc_protocol", "sc_cntry", "sc_state", "sc_city",
                     "provider", "go_base", "go_key", "go_url", "go_user", "go_host",
                     "pool_size", "fail_n", "check_interval", "check_conc", "connect_timeout",
                     "auto_rotate", "sc_count", "sc_time", "sc_white", "go_port",
-                    "auto_update", "update_minutes", "sc_code", "go_pass", "go_sign",
-                    "go_white_key", "go_white", "随机国库"],
+                    "auto_update", "update_minutes", "sc_code", "go_pass", "随机国库"],
             "出厂随机国库": list(默随机国库),
             "国名": dict(国名表),
         },
@@ -124,8 +121,6 @@ def 健康视图(池子: 池) -> dict:
         "listen": f"{池子.设['listen']}:{池子.听口()}",
         "web": f"{池子.设['web']}:{池子.网页口()}",
         "健康": len(池子.健康们()),
-        "工作": len(池子.健康们()),
-        "提取": len(池子.提取们()),
         "总数": len(池子.条们),
         "供应商": 池子.当前源() or "无",
         "这批地区": 池子.这批地区,
@@ -138,8 +133,6 @@ def 池视图(池子: 池) -> dict:
     return {
         "ok": True,
         "健康": len(池子.健康们()),
-        "工作": len(池子.健康们()),
-        "提取": len(池子.提取们()),
         "总数": len(池子.条们),
         "这批地区": 池子.这批地区,
         "池": [一.快照() for 一 in 池子.条们],
@@ -627,7 +620,6 @@ async def 处理管理(读, 写, 池子: 池) -> None:
                 str(数据.get("go_key") or "").strip(),
                 str(数据.get("go_user") or "").strip(),
                 str(数据.get("go_pass") or "").strip(),
-                str(数据.get("go_white") or 数据.get("go_white_url") or "").strip(),
             )
             _json(写, 200, {"ok": True, "步": 步, "msg": "\n".join(步), "config": 池子.配置快照()})
         elif 法 == "POST" and 路 == "/api/sc/white":
@@ -639,7 +631,6 @@ async def 处理管理(读, 写, 池子: 池) -> None:
         elif 法 == "POST" and 路 == "/api/sc/unwhite":
             好, 说 = await asyncio.to_thread(
                 池子.删白名单, str(数据.get("id") or ""), str(数据.get("ip") or ""),
-                str(数据.get("家") or 数据.get("from") or ""),
             )
             _json(写, 200, {"ok": True, "好": 好, "msg": 说})
         elif 法 == "POST" and 路 == "/api/sc/refresh":

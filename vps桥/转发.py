@@ -297,7 +297,7 @@ async def 处理客户(读: asyncio.StreamReader, 写: asyncio.StreamWriter, 池
         for _ in range(3):
             选 = await 池子.选(目标主)
             if 选 is None:
-                raise OSError("工作池还没有验过可用的代理")
+                raise OSError("代理池是空的")
             if 选.号 in 试过:
                 break
             试过.add(选.号)
@@ -385,9 +385,26 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
                 except Exception as 错:
                     await 池子.报败(一, str(错))
 
+        # 验活和换新分开计时，不然换新 30 秒也会被验活的 120 秒拖住
+        if 上次验 <= 0 or 现在 - 上次验 >= 间隔:
+            拷 = [一 for 一 in list(池子.条们) if 一.启用 and not 一.退役]
+            起 = time.monotonic()
+            if 拷:
+                轮数 = -(-len(拷) // 并发)
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*(验(一) for 一 in 拷)),
+                        timeout=轮数 * 秒 * 3 + 30,
+                    )
+                except asyncio.TimeoutError:
+                    日志.warning("这轮验活超时，先往下走")
+            好 = len(池子.健康们())
+            池子.上轮验活 = f"{time.strftime('%H:%M:%S')} 验了 {len(拷)} 条，健康 {好}，用了 {time.monotonic() - 起:.0f} 秒"
+            上次验 = time.monotonic()
+
         换期 = 池子.有效换期()
         现在 = time.monotonic()
-        if (池子.闪臣开() or 池子.ipipgo白开()) and 现在 - 上次刷 >= 60:
+        if 池子.闪臣开() and 现在 - 上次刷 >= 60:
             上次刷 = 现在
             try:
                 await asyncio.wait_for(asyncio.to_thread(池子.刷闪臣), timeout=90)
@@ -406,37 +423,8 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
         except Exception as 错:
             日志.warning("补池/换新失败：%s", 错)
 
-        # 提取池每轮都验，通过才升入工作池。工作池按间隔复查。
-        提 = [一 for 一 in list(池子.条们) if 一.启用 and not 一.退役 and 一.档 == "提取"]
-        要验工作 = 上次验 <= 0 or 现在 - 上次验 >= 间隔
-        工 = [一 for 一 in list(池子.条们) if 一.启用 and not 一.退役 and 一.档 == "工作"] if 要验工作 else []
-        拷 = 提 + 工
-        if 拷:
-            起 = time.monotonic()
-            轮数 = -(-len(拷) // 并发)
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*(验(一) for 一 in 拷)),
-                    timeout=轮数 * 秒 * 3 + 30,
-                )
-            except asyncio.TimeoutError:
-                日志.warning("这轮验活超时，先往下走")
-            好 = len(池子.健康们())
-            池子.上轮验活 = (f"{time.strftime('%H:%M:%S')} 验了 {len(拷)} 条"
-                           f"（提取 {len(提)}），工作 {好}，用了 {time.monotonic() - 起:.0f} 秒")
-            if 要验工作:
-                上次验 = time.monotonic()
-            if 提:
-                池子.落盘()
-        elif 要验工作:
-            上次验 = time.monotonic()
-            池子.上轮验活 = f"{time.strftime('%H:%M:%S')} 工作 {len(池子.健康们())}，提取 {len(池子.提取们())}"
-        async with 池子.锁:
-            池子._挤旧工作()
-
         # 新进来的线路问一下出口在哪国，面板上才看得出地区是不是真随机
-        没探 = [一 for 一 in list(池子.条们)
-                if 一.档 == "工作" and 一.启用 and 一.健康 and not 一.退役 and not 一.出口][:64]
+        没探 = [一 for 一 in list(池子.条们) if 一.启用 and 一.健康 and not 一.退役 and not 一.出口][:64]
         if 没探:
             async def 探(一: 条) -> None:
                 async with 门:
@@ -461,8 +449,6 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
         下验 = 间隔 - (现在 - 上次验)
         下换 = (换期 - (现在 - 上次换)) if 换期 else 间隔
         等到 = max(1, min(间隔, 下验, 下换 if 下换 > 0 else 1))
-        if 池子.提取们():
-            等到 = min(等到, 5)
         try:
             await asyncio.wait_for(停.wait(), timeout=等到)
         except asyncio.TimeoutError:
