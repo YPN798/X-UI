@@ -58,7 +58,7 @@ _饼干名 = "xui_bridge"
      "body": {"码": "TW"}},
     {"method": "GET", "path": "/api/panel", "desc": "同机 X-UI 面板地址，无需登录"},
     {"method": "POST", "path": "/api/set", "desc": "改设置，只改传入的字段。返回最新 config",
-     "body": {"sc_cntry": "JP", "pool_size": 100, "auto_rotate": 30}},
+     "body": {"sc_cntry": "JP", "pool_size": 100, "auto_rotate": 120}},
     {"method": "POST", "path": "/api/fill", "desc": "按目标条数补池"},
     {"method": "POST", "path": "/api/rotate", "desc": "先提新一批，旧拉取线路退役：新连接走新 IP，旧连接把回包走完再丢。手加保留"},
     {"method": "POST", "path": "/api/add", "desc": "手动加代理。串=多行文本，或 proxies=数组",

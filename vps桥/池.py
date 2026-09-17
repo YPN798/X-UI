@@ -101,7 +101,7 @@ def 人读(n: int) -> str:
     "fetch_url": "",
     "fetch_cmd": "",
     "fetch_scheme": "",
-    "auto_rotate": 30,
+    "auto_rotate": 120,
     "sc_base": "https://global.shanchendaili.com",
     "sc_key": "",
     "sc_code": "",
@@ -122,7 +122,7 @@ def 人读(n: int) -> str:
     "go_pass": "",
     "go_host": "proxy.ipipgo.com",
     "go_port": 1080,
-    "defaults_ver": 10,
+    "defaults_ver": 11,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -133,7 +133,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-16.1"
+版本 = "2026-09-17.1"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -316,6 +316,8 @@ class 池:
             if 旧版 < 10:
                 self.设["pool_size"] = 默认["pool_size"]
                 self.设["sc_count"] = 默认["sc_count"]
+            if 旧版 < 11:
+                self.设["auto_rotate"] = 默认["auto_rotate"]
             self.设["defaults_ver"] = 默认["defaults_ver"]
         self.条们 = []
         for 一 in 原.get("proxies") or []:
