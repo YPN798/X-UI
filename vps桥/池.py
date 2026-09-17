@@ -160,7 +160,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-17.10"
+版本 = "2026-09-17.11"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -1731,10 +1731,8 @@ class 池:
                 补["protocol"] = 数协
                 if "pt" in q:
                     补["pt"] = 数协
-            elif 原协议:
-                补["protocol"] = 文协
             else:
-                补["protocol"] = 数协
+                补["protocol"] = 文协
             if 国:
                 if "regions" in q or "country" not in q:
                     补["regions"] = 国
@@ -1756,11 +1754,10 @@ class 池:
         if not 键:
             return ""
         底 = str(self.设.get("go_base") or 默认["go_base"]).rstrip("/")
-        参 = {"key": 键, "num": 数, "type": "txt", "lb": "1", "protocol": 数协}
+        # api.ipipgo.com/getip 认字符串协议 http/https/socks5，发数字 1/2 会 502
+        参 = {"key": 键, "num": 数, "type": "json", "protocol": 文协}
         if 国:
-            国码 = str(国).strip().lower()
-            参["regions"] = 国码
-            参["country"] = 国码
+            参["country"] = str(国).strip().lower()
         if 州:
             参["state"] = 州
         if 市:
@@ -1788,9 +1785,16 @@ class 池:
         if 址:
             出 = self._抽一次(址, "")
             if not 出:
-                另 = self._改查询(址, {"type": "json", "format": "json"})
-                if 另 != 址:
+                # 不同账户后台的 getip 协议写法不一：字符串失败就换数字、再换纯文本
+                _, 数协 = self._ipipgo协议()
+                for 变 in ({"format": "json"}, {"protocol": 数协, "pt": 数协},
+                          {"type": "txt", "protocol": 数协}):
+                    另 = self._改查询(址, 变)
+                    if 另 == 址:
+                        continue
                     出 = self._抽一次(另, "")
+                    if 出:
+                        break
             if 出:
                 self.闪臣态["果提取说"] = f"提取到 {len(出)} 条"
                 return 出
