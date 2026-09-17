@@ -140,7 +140,7 @@ def 人读(n: int) -> str:
     # auto=谁有凭证用谁；两家都填则按上次成功的，失败换另一家
     "provider": "auto",
     "go_base": "https://api.ipipgo.com",
-    "go_key": "",
+    "go_key": "9741fk7e7fzyebj9smuoxiffvwbb638i",
     "go_url": "",
     "go_user": "",
     "go_pass": "",
@@ -149,7 +149,7 @@ def 人读(n: int) -> str:
     "go_white_base": "https://www.ipipgo.com",
     "go_white_key": "17633613790",
     "go_sign": "27eeb29319715c7ad60faf99008d010f",
-    "defaults_ver": 12,
+    "defaults_ver": 13,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -160,7 +160,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-17.6"
+版本 = "2026-09-17.8"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -403,6 +403,9 @@ class 池:
                 self.设["go_white_base"] = 默认["go_white_base"]
                 self.设["go_white_key"] = 默认["go_white_key"]
                 self.设["go_sign"] = 默认["go_sign"]
+            if 旧版 < 13:
+                if not str(self.设.get("go_key") or "").strip():
+                    self.设["go_key"] = 默认["go_key"]
             self.设["defaults_ver"] = 默认["defaults_ver"]
         self.条们 = []
         for 生 in 原.get("proxies") or []:
@@ -439,11 +442,14 @@ class 池:
             except ValueError as 错:
                 日志.warning("跳过非法代理：%s", 错)
         self._复流量()
+        self._挤旧工作()
         if 要升:
             日志.info("配置已升到默认 v%s：每批 %s 条，地区 %s/%s/%s，验活 %s 秒，换新 %s 秒",
                       self.设["defaults_ver"], self.设["sc_count"],
                       self.设["sc_cntry"], self.设["sc_state"], self.设["sc_city"],
                       self.设["check_interval"], self.设["auto_rotate"])
+            self.落盘()
+        elif any(一.退役 for 一 in self.条们):
             self.落盘()
 
     def 落盘(self) -> None:
@@ -776,6 +782,12 @@ class 池:
             候选 = self.健康们()
             if not 候选:
                 return None
+            # 新连接只走最新一批已验过的，旧线留给路上还没结束的请求（交替）
+            最大批 = max(int(一.批 or 0) for 一 in 候选)
+            if 最大批:
+                新 = [一 for 一 in 候选 if int(一.批 or 0) == 最大批]
+                if 新:
+                    候选 = 新
             粘住 = str(self.设.get("sticky") or "")
             if 粘住 == "host" and 目标:
                 旧号 = self.粘.get(目标)
@@ -891,6 +903,8 @@ class 池:
             一.失败 += 1
             一.上次错误 = (因 or "")[:200]
             阈 = max(1, int(self.设.get("fail_n") or 3))
+            if 一.档 == "提取":
+                阈 = 1
             if 一.失败 >= 阈:
                 if 一.档 == "提取":
                     self.条们 = [x for x in self.条们 if x.号 != 一.号]
@@ -903,35 +917,48 @@ class 池:
                     self.粘 = {k: v for k, v in self.粘.items() if v != 一.号}
                     日志.warning("工作池摘除 %s：%s", 一.脱敏(), 一.上次错误)
                     要补 = True
+            self._挤旧工作()
             self.写状态()
         if 要补:
             self._后台补齐()
 
+    def _清提取(self) -> int:
+        """换新前丢掉还没验过的旧提取，避免提取池越堆越多、占着验活。"""
+        前 = len(self.条们)
+        留 = [一 for 一 in self.条们 if not (一.档 == "提取" and self._提取的(一))]
+        if len(留) != 前:
+            活号 = {一.号 for 一 in 留}
+            self.粘 = {k: v for k, v in self.粘.items() if v in 活号}
+            self.条们 = 留
+        return 前 - len(self.条们)
+
     def _挤旧工作(self) -> None:
-        """新一批验够之后，才把旧工作线标退役。工作池不够时旧线继续服务。"""
+        """工作池只留目标条数；有新批次就退役旧线，新连接走新线，旧连接把回包走完。"""
         目标 = max(0, int(self.设.get("pool_size") or 0))
-        if 目标 <= 0:
-            return
         工 = [一 for 一 in self.条们
               if 一.档 == "工作" and 一.健康 and not 一.退役 and self._提取的(一)]
-        新号 = int(self.这批号 or 0)
-        if not 新号:
-            if len(工) > 目标:
-                工.sort(key=lambda x: x.批)
+        if 目标 <= 0 or not 工:
+            return
+        最大批 = max(int(一.批 or 0) for 一 in 工)
+        if 最大批:
+            新 = [一 for 一 in 工 if int(一.批 or 0) == 最大批]
+            旧 = [一 for 一 in 工 if int(一.批 or 0) != 最大批]
+            if 新:
+                留 = 新[:目标]
+                if len(留) < 目标:
+                    旧.sort(key=lambda x: -float(x.工作于 or 0))
+                    留.extend(旧[:目标 - len(留)])
+                留号 = {一.号 for 一 in 留}
                 now = time.monotonic()
-                for 一 in 工[目标:]:
-                    一.退役 = True
-                    一.退役于 = now
+                for 一 in 工:
+                    if 一.号 not in 留号:
+                        一.退役 = True
+                        一.退役于 = now
+                return
+        if len(工) <= 目标:
             return
-        新 = [一 for 一 in 工 if int(一.批 or 0) == 新号]
-        旧 = [一 for 一 in 工 if int(一.批 or 0) != 新号]
-        还在提 = any(一.档 == "提取" and int(一.批 or 0) == 新号 for 一 in self.条们)
-        if 还在提 and len(新) < 目标:
-            return
-        留 = 新[:目标]
-        if len(留) < 目标:
-            留.extend(旧[:目标 - len(留)])
-        留号 = {一.号 for 一 in 留}
+        工.sort(key=lambda x: -float(x.工作于 or 0))
+        留号 = {一.号 for 一 in 工[:目标]}
         now = time.monotonic()
         for 一 in 工:
             if 一.号 not in 留号:
@@ -1819,6 +1846,7 @@ class 池:
     async def 补齐(self) -> str:
         目标 = max(0, int(self.设.get("pool_size") or 0))
         async with self.锁:
+            self._挤旧工作()
             健康数 = len(self.健康们())
             提取数 = len(self.提取们())
         if 目标 <= 0 or 健康数 >= 目标:
@@ -1866,6 +1894,8 @@ class 池:
             return 说
         async with self.锁:
             self._收旧()
+            self._清提取()
+            self._挤旧工作()
             self.这批号 = int(time.time())
             新成 = 0
             for 信 in 批:

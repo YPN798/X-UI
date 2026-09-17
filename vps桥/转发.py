@@ -431,6 +431,8 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
         elif 要验工作:
             上次验 = time.monotonic()
             池子.上轮验活 = f"{time.strftime('%H:%M:%S')} 工作 {len(池子.健康们())}，提取 {len(池子.提取们())}"
+        async with 池子.锁:
+            池子._挤旧工作()
 
         # 新进来的线路问一下出口在哪国，面板上才看得出地区是不是真随机
         没探 = [一 for 一 in list(池子.条们)
