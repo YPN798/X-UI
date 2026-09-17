@@ -249,9 +249,9 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
         <label class="f">每次提几条 <input name="sc_count" type="number" min="1" max="500"></label>
         <label class="f">IP 保持多久
           <select name="sc_time">
-            <option value="1">每次请求更换 IP</option>
             <option value="0">每次更换 IP（5-30 分钟）</option>
             <option value="2">1-6 小时</option>
+            <option value="1">每次请求更换 IP</option>
           </select>
         </label>
         <label class="f">套餐协议
@@ -598,7 +598,7 @@ function 填(d){
     塞(f,"update_minutes",d.update_minutes||5);
     塞(f,"fetch_scheme",d.fetch_scheme||"");
     塞(f,"sc_count",d.sc_count||100);
-    塞(f,"sc_time",String(d.sc_time==null?1:d.sc_time));
+    塞(f,"sc_time",String(d.sc_time==null?0:d.sc_time));
     塞(f,"sc_protocol",d.sc_protocol||"s5");
     塞(f,"sc_state",d.sc_state||"");
     塞(f,"sc_city",d.sc_city||"");
