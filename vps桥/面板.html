@@ -154,7 +154,7 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
 </header>
 <main>
   <section class="kpis">
-    <div class="kpi"><div class="k">健康代理</div><div class="v" id="k健康">—</div><div class="s" id="k健康说">等待状态</div></div>
+    <div class="kpi"><div class="k">工作池</div><div class="v" id="k健康">—</div><div class="s" id="k健康说">等待状态</div></div>
     <div class="kpi"><div class="k">今日消耗</div><div class="v" id="k流量">—</div><div class="s" id="k流量说">按日统计</div></div>
     <div class="kpi"><div class="k">剩余额度</div><div class="v" id="k余额">—</div><div class="s" id="k余额说">提取源</div></div>
     <div class="kpi"><div class="k">当前地区</div><div class="v" id="k地区">—</div><div class="s" id="k地区说">出口分布</div></div>
@@ -204,18 +204,18 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
         <thead><tr><th>地址</th><th>状态</th><th>出口</th><th>连接</th><th>上行</th><th>下行</th><th>来源</th><th>说明</th><th></th></tr></thead>
         <tbody id="表"></tbody>
       </table>
-      <div class="empty hide" id="池空">池是空的。先到「提取源」开跑，或在设置里手动加入。</div>
+        <div class="empty hide" id="池空">池是空的。先到「提取源」开跑。新提出来的在提取池里，验过才进工作池。</div>
     </div>
   </section>
 
   <section id="页-提取源" class="hide">
     <div class="card">
       <h2>提取源</h2>
-      <p class="desc">闪臣或 IPIPGO，有哪个填哪个。两家都填时按「用哪家」；自动则谁能提用谁。每批同一国。</p>
+      <p class="desc">闪臣和 IPIPGO 都配了就混合提取。新 IP 先进提取池，验活通过才进工作池；业务只走工作池。</p>
       <form id="闪" class="form">
         <label class="f">用哪家
           <select name="provider">
-            <option value="auto">自动</option>
+            <option value="auto">自动（混合）</option>
             <option value="shanchen">闪臣</option>
             <option value="ipipgo">IPIPGO</option>
           </select>
@@ -230,6 +230,9 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
         <label class="f">IPIPGO 账号<input name="go_user" placeholder="账密提取才要"></label>
         <label class="f">IPIPGO 密码
           <input name="go_pass" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" placeholder="已保存则留空">
+        </label>
+        <label class="f wide">IPIPGO 白名单接口
+          <input name="go_white" placeholder="已内置。可贴新的 add 链接覆盖">
         </label>
         <div class="actions" style="grid-column:1/-1">
           <button class="btn pri" type="submit" id="开跑">保存并自动开跑</button>
@@ -399,6 +402,7 @@ document.getElementById("页签").onclick=e=>{
 function 分布(列){
   const 计={}; let 没探=0;
   (列||[]).forEach(p=>{
+    if(p.档==="提取"||p.退役) return;
     const 出=String(p.出口||"");
     if(!出){ 没探++; return; }
     const 国=出.startsWith("?")?"探不到":(出.split(" ")[0]||"?");
@@ -424,32 +428,35 @@ function 填闪(s){
   const 态=s.本机IP?(s.已加白?"<span class='pill ok'>已在白名单</span>"
                             :"<span class='pill bad'>不在白名单</span>")
                   :"<span class='pill mute'>白名单未知</span>";
-  let h="<h2>源状态</h2><p class=desc>余额、本机出口、白名单。提取被 1004 拒就是没加白。</p>";
+  let h="<h2>源状态</h2><p class=desc>余额、本机出口、白名单。提取被拒会自动加白再提。</p>";
   h+=行("剩余流量", 余+(s.余额说?" · "+esc(s.余额说):""));
   h+=行("本机出口 IP", 本+" "+态);
+  if(s.ipipgo白开) h+=行("IPIPGO 白名单", s.ipipgo已加白?"本机已加入":(s.有go签?"已接接口":"—"));
   h+=行("提取地址", "<span class=mono>"+esc(s.提取地址||"—")+"</span>");
   if(s.白名单说) h+="<p class=desc>"+esc(s.白名单说)+"</p>";
-  if(!s.有码) h+="<p class=desc>没存安全码，加删白名单都用不了。</p>";
+  if(s.闪臣开 && !s.有码) h+="<p class=desc>没存闪臣安全码，闪臣加删白名单都用不了。</p>";
   if(白.length){
-    h+="<table style=margin-top:10px><thead><tr><th>白名单 IP</th><th>备注</th><th></th></tr></thead><tbody id=白表></tbody></table>";
+    h+="<table style=margin-top:10px><thead><tr><th>白名单 IP</th><th>来源</th><th>备注</th><th></th></tr></thead><tbody id=白表></tbody></table>";
   }else h+="<p class=desc>白名单是空的。</p>";
   盒.innerHTML=h;
   const tb=document.getElementById("白表");
   if(!tb) return;
   白.forEach(w=>{
     const tr=document.createElement("tr");
-    tr.innerHTML="<td class=mono></td><td></td><td></td>";
+    tr.innerHTML="<td class=mono></td><td></td><td></td><td></td>";
     tr.cells[0].textContent=w.ip||"";
-    tr.cells[1].textContent=w.备注||"";
+    tr.cells[1].textContent=w.家==="ipipgo"?"IPIPGO":"闪臣";
+    tr.cells[2].textContent=w.备注||"";
     const b=document.createElement("button");
     b.className="btn bad"; b.textContent="删除";
     b.onclick=async()=>{
-      if(!confirm("从闪臣白名单删掉 "+(w.ip||w.id)+"？")) return;
-      try{ await api("/api/sc/unwhite",{id:w.id,ip:w.ip}); 吐("已删除"); }
+      const 名=w.家==="ipipgo"?"IPIPGO":"闪臣";
+      if(!confirm("从"+名+"白名单删掉 "+(w.ip||w.id)+"？")) return;
+      try{ await api("/api/sc/unwhite",{id:w.id,ip:w.ip,家:w.家||""}); 吐("已删除"); }
       catch(e){ 吐(e.message,1); }
       刷();
     };
-    tr.cells[2].appendChild(b);
+    tr.cells[3].appendChild(b);
     tb.appendChild(tr);
   });
 }
@@ -518,11 +525,11 @@ function 填表(d){
   const 列=d.池||d.proxies||[];
   let n=0;
   列.forEach(p=>{
-    const 文=[p.地址,p.出口,p.来源,p.上次错误,p.上次切换].join(" ").toLowerCase();
+    const 文=[p.地址,p.出口,p.来源,p.档,p.上次错误,p.上次切换].join(" ").toLowerCase();
     if(q && !文.includes(q)) return;
     n++;
     const tr=document.createElement("tr");
-    const 态=p.退役?"<span class='pill warn'>交替</span>":p.启用?(p.健康?"<span class='pill ok'>健康</span>":"<span class='pill bad'>摘除</span>"):"<span class='pill mute'>停</span>";
+    const 态=p.退役?"<span class='pill warn'>交替</span>":p.档==="提取"?"<span class='pill warn'>待验</span>":p.启用?(p.健康?"<span class='pill ok'>工作</span>":"<span class='pill bad'>摘除</span>"):"<span class='pill mute'>停</span>";
     const 出=String(p.出口||"");
     const 出格=出?(出.startsWith("?")?"<span class='pill mute'>探不到</span>":esc(出)):"<span class='pill mute'>待探</span>";
     tr.innerHTML="<td class=mono>"+esc(p.地址)+" <span class=pill>"+esc(p.方案)+"</span></td><td>"+态+
@@ -547,8 +554,8 @@ function 填(d){
   document.getElementById("顶版").textContent=d.版本||"—";
   document.getElementById("活点").className="dot";
   document.getElementById("活文").textContent="在线";
-  document.getElementById("k健康").textContent=(d.健康||0)+"/"+(d.总数||0);
-  document.getElementById("k健康说").textContent=(s.供应商||d.供应商||"无源")+" · 目标 "+(d.pool_size||0);
+  document.getElementById("k健康").textContent=(d.工作||d.健康||0)+"/"+(d.pool_size||0);
+  document.getElementById("k健康说").textContent=(s.供应商||d.供应商||"无源")+" · 提取待验 "+(d.提取||0);
   document.getElementById("k流量").textContent=d.今日合计文||"0 B";
   document.getElementById("k流量说").textContent="上 "+(d.今日上行文||"0 B")+" / 下 "+(d.今日下行文||"0 B")+" · 累计 "+(d.累计合计文||d.总下行文||"0 B");
   document.getElementById("k余额").textContent=s.余额|| (s.开?"查询中":"未启用");
@@ -562,6 +569,8 @@ function 填(d){
   document.getElementById("概览左").innerHTML=
     行("SOCKS", esc(d.listen))+
     行("管理页", esc(d.web))+
+    行("工作池", (d.工作||d.健康||0)+" / "+(d.pool_size||0))+
+    行("提取待验", String(d.提取||0))+
     行("验活", esc((d.check_host||"www.dola.com")+":"+(d.check_port||443)))+
     行("供应商", esc(s.供应商||d.供应商||"无"))+
     行("提取地区", esc(s.地区||"随机"))+
@@ -610,6 +619,7 @@ function 填(d){
     塞(g,"go_user",d.go_user||"");
     if(g.sc_code && !脏["闪"]) g.sc_code.placeholder=s.有码?"已保存，留空=不改":"闪臣才要";
     if(g.go_pass && !脏["闪"]) g.go_pass.placeholder=s.有go密?"已保存，留空=不改":"账密提取才要";
+    if(g.go_white && !脏["闪"]) g.go_white.placeholder=s.有go签?"已内置，留空=不改":"可贴 add 链接";
   }catch(e){ console.warn(e); }
 }
 async function 刷(){
@@ -655,9 +665,10 @@ document.getElementById("闪").onsubmit=e=>{
   return 忙("开跑","正在开跑…",async()=>{
     const j=await api("/api/sc/setup",{
       provider:f.provider.value, key:f.sc_key.value.trim(), code:f.sc_code.value,
-      go_key:f.go_key.value.trim(), go_user:f.go_user.value.trim(), go_pass:f.go_pass.value
+      go_key:f.go_key.value.trim(), go_user:f.go_user.value.trim(), go_pass:f.go_pass.value,
+      go_white:f.go_white?f.go_white.value.trim():""
     });
-    f.sc_code.value=""; f.go_pass.value=""; 脏["闪"]=0;
+    f.sc_code.value=""; f.go_pass.value=""; if(f.go_white) f.go_white.value=""; 脏["闪"]=0;
     return (j.步||[]).join("\n");
   });
 };

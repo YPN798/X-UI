@@ -66,12 +66,27 @@ def 遮(密: str) -> str:
 
 def _白条(一: Any) -> dict[str, str]:
     if not isinstance(一, dict):
-        return {"id": "", "ip": str(一 or ""), "备注": ""}
+        return {"id": "", "ip": str(一 or ""), "备注": "", "家": ""}
     return {
         "id": str(一.get("id") or 一.get("ID") or ""),
-        "ip": str(一.get("ip") or 一.get("IP") or 一.get("address") or ""),
-        "备注": str(一.get("remark") or 一.get("note") or ""),
+        "ip": str(一.get("ip") or 一.get("IP") or 一.get("address") or 一.get("clientIp") or ""),
+        "备注": str(一.get("remark") or 一.get("note") or 一.get("content") or ""),
+        "家": str(一.get("家") or ""),
     }
+
+
+def 拆ipipgo白(文: str) -> dict[str, str]:
+    """从后台复制的 add/remove/fetch 链接里拆出 key、sign。"""
+    文 = (文 or "").strip()
+    if not 文 or "proxy-white" not in 文:
+        return {}
+    u = urlparse(文 if "://" in 文 else "https://www.ipipgo.com/?" + 文)
+    q = dict(parse_qsl(u.query, keep_blank_values=True))
+    键 = str(q.get("key") or "").strip()
+    签 = str(q.get("sign") or "").strip()
+    if not (键 and 签):
+        return {}
+    return {"key": 键, "sign": 签}
 
 
 def 人读(n: int) -> str:
@@ -122,7 +137,10 @@ def 人读(n: int) -> str:
     "go_pass": "",
     "go_host": "proxy.ipipgo.com",
     "go_port": 1080,
-    "defaults_ver": 11,
+    "go_white_base": "https://www.ipipgo.com",
+    "go_white_key": "17633613790",
+    "go_sign": "27eeb29319715c7ad60faf99008d010f",
+    "defaults_ver": 12,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -133,7 +151,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-17.1"
+版本 = "2026-09-17.3"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -187,7 +205,14 @@ class 条:
         self.密码 = str(信.get("密码") or "")
         self.来源 = 来源
         self.启用 = bool(信.get("启用", True))
-        self.健康 = bool(信.get("健康", True))
+        self.档 = str(信.get("档") or "提取").strip() or "提取"
+        if self.档 not in ("提取", "工作"):
+            self.档 = "提取"
+        try:
+            self.批 = int(信.get("批") or 0)
+        except (TypeError, ValueError):
+            self.批 = 0
+        self.健康 = bool(信.get("健康", self.档 == "工作"))
         self.失败 = int(信.get("失败") or 0)
         self.连接 = 0
         self.上行 = int(信.get("上行") or 0)
@@ -217,7 +242,12 @@ class 条:
             "号": self.号,
             "地址": self.脱敏(),
             "方案": self.方案,
-            "来源": "退役" if self.退役 else self.来源,
+            "来源": ("退役" if self.退役 else
+                   ("提取" if self.档 == "提取" else
+                    ("手加" if self.来源 == "手加" else "工作"))),
+            "来源原": self.来源,
+            "档": self.档,
+            "批": self.批,
             "退役": self.退役,
             "启用": self.启用,
             "健康": self.健康,
@@ -243,6 +273,7 @@ class 池:
         self.上次换新 = ""
         self.这批地区 = ""
         self.上次源 = ""
+        self.这批号 = 0
         # 验活循环每轮把自己的计时基准放这儿，面板好算还有多久换下一批
         self.换基 = 0.0
         self.上轮验活 = ""
@@ -318,19 +349,35 @@ class 池:
                 self.设["sc_count"] = 默认["sc_count"]
             if 旧版 < 11:
                 self.设["auto_rotate"] = 默认["auto_rotate"]
+            if 旧版 < 12:
+                self.设["go_white_base"] = 默认["go_white_base"]
+                self.设["go_white_key"] = 默认["go_white_key"]
+                self.设["go_sign"] = 默认["go_sign"]
             self.设["defaults_ver"] = 默认["defaults_ver"]
         self.条们 = []
-        for 一 in 原.get("proxies") or []:
-            # 新格式 {"串":..., "来源":...}；老格式和 install.sh 追加的是纯字符串
-            源 = "手加"
-            if isinstance(一, dict) and 一.get("串"):
-                源, 一 = str(一.get("来源") or "手加"), 一["串"]
+        for 生 in 原.get("proxies") or []:
+            # 新格式 {"串":..., "来源":..., "档":...}；老格式和 install.sh 追加的是纯字符串
+            源, 档, 批, 健, 串 = "手加", "", 0, None, 生
+            if isinstance(生, dict) and 生.get("串"):
+                源 = str(生.get("来源") or "手加")
+                档 = str(生.get("档") or "")
+                try:
+                    批 = int(生.get("批") or 0)
+                except (TypeError, ValueError):
+                    批 = 0
+                if "健康" in 生:
+                    健 = bool(生["健康"])
+                串 = 生["串"]
             # 闪臣的线路只可能是提取来的。补来源之前存下的那批被当成手加，
             # 换新永远清不掉，池子从 30 涨到 56。不管存成什么格式，一律认回拉取
-            if 闪臣主机 in str(一) or ipipgo主机 in str(一):
+            if 闪臣主机 in str(串) or ipipgo主机 in str(串):
                 源 = "拉取"
             try:
-                self._塞(一, 来源=源, 落盘=False)
+                入 = self._塞(串, 来源=源, 落盘=False, 档=档, 批=批)
+                if 健 is not None:
+                    入.健康 = 健
+                if not 档:
+                    入.档 = "工作" if 入.健康 else "提取"
             except ValueError as 错:
                 日志.warning("跳过非法代理：%s", 错)
         self._复流量()
@@ -379,6 +426,9 @@ class 池:
             "go_pass": self.设.get("go_pass") or "",
             "go_host": self.设.get("go_host") or 默认["go_host"],
             "go_port": int(self.设.get("go_port") or 默认["go_port"]),
+            "go_white_base": self.设.get("go_white_base") or 默认["go_white_base"],
+            "go_white_key": self.设.get("go_white_key") or "",
+            "go_sign": self.设.get("go_sign") or "",
             "defaults_ver": int(self.设.get("defaults_ver") or 默认["defaults_ver"]),
             "web_pass": self.设["web_pass"],
             "auto_update": int(self.设.get("auto_update") or 0),
@@ -386,7 +436,8 @@ class 池:
             "update_base": self.设.get("update_base") or 默认["update_base"],
             "随机国库": self.国库(),
             # 来源必须一起存，否则重启后拉取来的全变成手加，换新再也换不掉它们
-            "proxies": [{"串": 一.串(), "来源": 一.来源} for 一 in self.条们 if not 一.退役],
+            "proxies": [{"串": 一.串(), "来源": 一.来源, "档": 一.档,
+                         "批": 一.批, "健康": 一.健康} for 一 in self.条们 if not 一.退役],
         }
         临时 = self.径.with_suffix(self.径.suffix + ".tmp")
         临时.write_text(json.dumps(出, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -470,7 +521,8 @@ class 池:
             return False
         return int(端口) in {self.听口(), self.网页口()}
 
-    def _塞(self, 串或信, 来源: str = "手加", 落盘: bool = True) -> 条:
+    def _塞(self, 串或信, 来源: str = "手加", 落盘: bool = True,
+            档: str = "", 批: int = 0) -> 条:
         if isinstance(串或信, dict) and 串或信.get("主机"):
             信 = 串或信
         else:
@@ -487,12 +539,27 @@ class 池:
                 已.退役于 = 0.0
                 已.来源 = 来源
                 已.启用 = True
+                if 批:
+                    已.批 = 批
+                已工作 = 已.档 == "工作" and 已.健康
+                if 档 == "提取" and not 已工作:
+                    已.档 = "提取"
+                    已.健康 = False
+                    已.失败 = 0
+                    已.出口 = ""
+                elif 档 == "工作":
+                    已.档 = "工作"
                 return 已
-        一 = 条(信, 来源=来源)
+        入 = dict(信)
+        入["档"] = 档 or "提取"
+        入["批"] = 批
+        if (档 or "提取") != "工作":
+            入["健康"] = False
+        一 = 条(入, 来源=来源)
         self.条们.append(一)
         if 落盘:
             self.落盘()
-        日志.info("入池 %s 来源=%s", 一.脱敏(), 来源)
+        日志.info("入%s池 %s 来源=%s", 一.档, 一.脱敏(), 来源)
         return 一
 
     async def 加(self, 串: str, 来源: str = "手加") -> 条:
@@ -522,7 +589,8 @@ class 池:
         async with self.锁:
             for k in ("mode", "sticky", "fetch_url", "fetch_cmd", "fetch_scheme",
                       "sc_base", "sc_key", "sc_protocol", "sc_cntry", "sc_state", "sc_city",
-                      "provider", "go_base", "go_key", "go_url", "go_user", "go_host"):
+                      "provider", "go_base", "go_key", "go_url", "go_user", "go_host",
+                      "go_white_base", "go_white_key"):
                 if k in 补 and 补[k] is not None:
                     self.设[k] = str(补[k]).strip()
             for k in ("pool_size", "fail_n", "check_interval", "check_conc",
@@ -538,8 +606,18 @@ class 池:
                 self.设["go_pass"] = str(补["go_pass"]).strip()
             if str(补.get("web_pass") or "").strip():
                 self.设["web_pass"] = str(补["web_pass"]).strip()
+            if str(补.get("go_sign") or "").strip():
+                self.设["go_sign"] = str(补["go_sign"]).strip()
+            for 白链 in (补.get("go_white"), 补.get("go_white_url"), 补.get("go_key")):
+                信 = 拆ipipgo白(str(白链 or ""))
+                if 信:
+                    self.设["go_white_key"] = 信["key"]
+                    self.设["go_sign"] = 信["sign"]
+                    break
             键或址 = str(补.get("go_key") or "").strip()
-            if 键或址.startswith(("http://", "https://")):
+            if 键或址 and "proxy-white" in 键或址:
+                self.设["go_key"] = ""
+            elif 键或址.startswith(("http://", "https://")):
                 self.设["go_url"] = 键或址
             if "随机国库" in 补:
                 列 = 洗国库(补.get("随机国库"))
@@ -592,7 +670,13 @@ class 池:
         return max(0, int(换期 - (time.monotonic() - self.换基)))
 
     def 健康们(self) -> list[条]:
-        return [一 for 一 in self.条们 if 一.启用 and 一.健康 and not 一.退役]
+        """工作池里验过可用的。选路上游只走这里。"""
+        return [一 for 一 in self.条们
+                if 一.档 == "工作" and 一.启用 and 一.健康 and not 一.退役]
+
+    def 提取们(self) -> list[条]:
+        return [一 for 一 in self.条们
+                if 一.档 == "提取" and 一.启用 and not 一.退役]
 
     def _提取的(self, 一: 条) -> bool:
         return 一.来源 == "拉取" or 闪臣主机 in 一.主机 or ipipgo主机 in 一.主机
@@ -627,8 +711,6 @@ class 池:
     async def 选(self, 目标: str = "") -> 条 | None:
         async with self.锁:
             候选 = self.健康们()
-            if not 候选:
-                候选 = [一 for 一 in self.条们 if 一.启用 and not 一.退役]
             if not 候选:
                 return None
             粘住 = str(self.设.get("sticky") or "")
@@ -731,6 +813,11 @@ class 池:
             一.失败 = 0
             一.健康 = True
             一.上次错误 = ""
+            if 一.档 != "工作":
+                一.档 = "工作"
+                日志.info("升入工作池 %s", 一.脱敏())
+            self._挤旧工作()
+            self.写状态()
 
     async def 报败(self, 一: 条, 因: str) -> None:
         要补 = False
@@ -739,15 +826,51 @@ class 池:
             一.上次错误 = (因 or "")[:200]
             阈 = max(1, int(self.设.get("fail_n") or 3))
             if 一.失败 >= 阈:
-                一.健康 = False
-                一.上次切换 = time.strftime("%Y-%m-%d %H:%M:%S") + " " + 一.上次错误
-                self.粘 = {k: v for k, v in self.粘.items() if v != 一.号}
-                日志.warning("摘除 %s：%s", 一.脱敏(), 一.上次错误)
-                要补 = True
+                if 一.档 == "提取":
+                    self.条们 = [x for x in self.条们 if x.号 != 一.号]
+                    self.粘 = {k: v for k, v in self.粘.items() if v != 一.号}
+                    日志.warning("提取池丢弃 %s：%s", 一.脱敏(), 一.上次错误)
+                    要补 = True
+                else:
+                    一.健康 = False
+                    一.上次切换 = time.strftime("%Y-%m-%d %H:%M:%S") + " " + 一.上次错误
+                    self.粘 = {k: v for k, v in self.粘.items() if v != 一.号}
+                    日志.warning("工作池摘除 %s：%s", 一.脱敏(), 一.上次错误)
+                    要补 = True
             self.写状态()
         if 要补:
-            # 补池要跑一趟闪臣接口，不能让正在等着的那个请求陪着卡
             self._后台补齐()
+
+    def _挤旧工作(self) -> None:
+        """新一批验够之后，才把旧工作线标退役。工作池不够时旧线继续服务。"""
+        目标 = max(0, int(self.设.get("pool_size") or 0))
+        if 目标 <= 0:
+            return
+        工 = [一 for 一 in self.条们
+              if 一.档 == "工作" and 一.健康 and not 一.退役 and self._提取的(一)]
+        新号 = int(self.这批号 or 0)
+        if not 新号:
+            if len(工) > 目标:
+                工.sort(key=lambda x: x.批)
+                now = time.monotonic()
+                for 一 in 工[目标:]:
+                    一.退役 = True
+                    一.退役于 = now
+            return
+        新 = [一 for 一 in 工 if int(一.批 or 0) == 新号]
+        旧 = [一 for 一 in 工 if int(一.批 or 0) != 新号]
+        还在提 = any(一.档 == "提取" and int(一.批 or 0) == 新号 for 一 in self.条们)
+        if 还在提 and len(新) < 目标:
+            return
+        留 = 新[:目标]
+        if len(留) < 目标:
+            留.extend(旧[:目标 - len(留)])
+        留号 = {一.号 for 一 in 留}
+        now = time.monotonic()
+        for 一 in 工:
+            if 一.号 not in 留号:
+                一.退役 = True
+                一.退役于 = now
 
     def _后台补齐(self) -> None:
         if self._补中:
@@ -780,8 +903,20 @@ class 池:
                 and str(self.设.get("go_pass") or "").strip())
         )
 
+    def ipipgo白开(self) -> bool:
+        return bool(str(self.设.get("go_white_key") or "").strip()
+                    and str(self.设.get("go_sign") or "").strip())
+
+    def 源名(self, 源: str = "") -> str:
+        源 = 源 or self.当前源()
+        if 源 == "混合" or "," in 源:
+            return "混合"
+        return {"shanchen": "闪臣", "ipipgo": "IPIPGO"}.get(源, "无")
+
     def 当前源(self) -> str:
         序 = self.源顺序()
+        if len(序) > 1:
+            return "混合"
         return 序[0] if 序 else ""
 
     def 源顺序(self) -> list[str]:
@@ -792,24 +927,23 @@ class 池:
         if 选 == "ipipgo":
             return ["ipipgo"] if 果 else []
         序: list[str] = []
-        if self.上次源 == "ipipgo" and 果:
-            序.append("ipipgo")
         if 闪:
             序.append("shanchen")
-        if 果 and "ipipgo" not in 序:
+        if 果:
             序.append("ipipgo")
         return 序
-
-    def 源名(self, 源: str = "") -> str:
-        return {"shanchen": "闪臣", "ipipgo": "IPIPGO"}.get(源 or self.当前源(), "无")
 
     def 码锁着(self) -> bool:
         """闪臣对连续错的安全码会上锁，越试锁得越久，所以撞过 1006 就先停手。"""
         return time.time() < float(self.闪臣态.get("码锁到") or 0)
 
     def 可自动白(self) -> bool:
+        if not int(self.设.get("sc_white") or 0):
+            return False
+        if self.ipipgo白开():
+            return True
         return (self.闪臣开() and bool(str(self.设.get("sc_code") or "").strip())
-                and bool(int(self.设.get("sc_white") or 0)) and not self.码锁着())
+                and not self.码锁着())
 
     def _闪臣址(self, 名: str, 参: dict[str, Any]) -> str:
         # 海外动态流量走 global 这套 flow-api，不要再用 sch.shanchendaili.com
@@ -853,15 +987,32 @@ class 池:
         return 缓
 
     def 加白名单(self, ip: str = "", 备注: str = "xui-bridge") -> tuple[bool, str]:
-        """ip 留空就让闪臣按请求来源 IP 加，正好是本机出口。阻塞。"""
-        if not self.闪臣开():
-            return False, "没填 API Key"
+        """ip 留空就查本机出口再往已配的源加。闪臣、IPIPGO 有哪个加哪个。阻塞。"""
+        ip = str(ip or "").strip() or self.本机出口IP()
+        句: list[str] = []
+        好 = False
         安全码 = str(self.设.get("sc_code") or "").strip()
-        if not 安全码:
-            return False, "没填安全码，闪臣要求改白名单必须带安全码"
+        if self.闪臣开() and 安全码 and not self.码锁着():
+            a, b = self._闪臣加白(ip, 备注)
+            好 = 好 or a
+            句.append("闪臣：" + b)
+        elif self.闪臣开() and not 安全码:
+            句.append("闪臣：没填安全码")
+        if self.ipipgo白开():
+            a, b = self._ipipgo加白(ip)
+            好 = 好 or a
+            句.append("IPIPGO：" + b)
+        if not 句:
+            return False, "没配闪臣安全码，也没配 IPIPGO 白名单接口"
+        说 = "；".join(句)
+        self.闪臣态["白名单说"] = f"{time.strftime('%H:%M:%S')} {说}"
+        (日志.info if 好 else 日志.warning)("加白名单：%s", 说)
+        return 好, 说
+
+    def _闪臣加白(self, ip: str, 备注: str = "xui-bridge") -> tuple[bool, str]:
         码, 说, _ = self._闪臣调("whitelist-add.html", {
             "key": str(self.设.get("sc_key") or "").strip(),
-            "security_code": 安全码,
+            "security_code": str(self.设.get("sc_code") or "").strip(),
             "ip": str(ip or "").strip(),
             "remark": 备注,
         })
@@ -871,29 +1022,109 @@ class 池:
             说 += "。已暂停自动重试 10 分钟，重存一次安全码可立刻解除"
         elif 好:
             self.闪臣态["码锁到"] = 0.0
-        self.闪臣态["白名单说"] = f"{time.strftime('%H:%M:%S')} {'已加入白名单' if 好 else 说}"
-        (日志.info if 好 else 日志.warning)("加白名单：%s", 说)
         if 好:
             self.查白名单()
         return 好, 说
 
-    def 删白名单(self, 号: str = "", ip: str = "") -> tuple[bool, str]:
+    def 删白名单(self, 号: str = "", ip: str = "", 家: str = "") -> tuple[bool, str]:
+        号, ip, 家 = str(号 or "").strip(), str(ip or "").strip(), str(家 or "").strip()
+        if not 号 and not ip:
+            return False, "得给 id 或 ip"
+        if 家 == "ipipgo" or (家 != "shanchen" and self._是ipipgo白(号, ip)):
+            if not ip:
+                ip = next((str(一.get("ip") or "") for 一 in (self.闪臣态.get("go白") or [])
+                           if 一.get("id") == 号), "")
+            if not ip:
+                return False, "IPIPGO 删除要 IP"
+            码, 说, _ = self._ipipgo白调("remove", ip)
+            好 = 码 in (0, 200)
+            self.闪臣态["白名单说"] = f"{time.strftime('%H:%M:%S')} {'已删除' if 好 else 说}"
+            if 好:
+                self.查ipipgo白()
+            return 好, 说
         安全码 = str(self.设.get("sc_code") or "").strip()
         if not self.闪臣开() or not 安全码:
             return False, "要先填 API Key 和安全码"
-        if not str(号 or "").strip() and not str(ip or "").strip():
-            return False, "得给 id 或 ip"
         码, 说, _ = self._闪臣调("whitelist-remove.html", {
             "key": str(self.设.get("sc_key") or "").strip(),
             "security_code": 安全码,
-            "id": str(号 or "").strip(),
-            "ip": str(ip or "").strip(),
+            "id": 号,
+            "ip": ip,
         })
         好 = 码 == 0
         self.闪臣态["白名单说"] = f"{time.strftime('%H:%M:%S')} {'已删除' if 好 else 说}"
         if 好:
             self.查白名单()
         return 好, 说
+
+    def _是ipipgo白(self, 号: str, ip: str) -> bool:
+        for 一 in self.闪臣态.get("go白") or []:
+            if (号 and 一.get("id") == 号) or (ip and 一.get("ip") == ip):
+                return True
+        return False
+
+    def _ipipgo白调(self, 名: str, ip: str = "") -> tuple[int, str, Any]:
+        键 = str(self.设.get("go_white_key") or "").strip()
+        签 = str(self.设.get("go_sign") or "").strip()
+        if not 键 or not 签:
+            return -1, "没配 IPIPGO 白名单 key/sign", None
+        底 = str(self.设.get("go_white_base") or 默认["go_white_base"]).rstrip("/")
+        参 = {"key": 键, "sign": 签, "ip": str(ip or "").strip()}
+        址 = f"{底}/web/proxy-white/{名}?{urlencode(参)}"
+        try:
+            求 = Request(址, headers={"User-Agent": "xui-bridge"})
+            with urlopen(求, timeout=20) as r:
+                文 = r.read().decode("utf-8", "replace")
+        except Exception as 错:
+            return -1, f"连不上 IPIPGO 白名单：{错}", None
+        包 = 解信封(文)
+        if 包 is None:
+            return -1, f"IPIPGO 白名单返回看不懂：{(文 or '').strip()[:140]}", None
+        码, 话, 数 = 包
+        if 码 in (0, 200):
+            return 码, 话 or "ok", 数
+        return 码, 话 or f"错误码 {码}", 数
+
+    def _ipipgo加白(self, ip: str) -> tuple[bool, str]:
+        ip = str(ip or "").strip()
+        if not ip:
+            return False, "没有本机 IP 可加"
+        码, 说, 数 = self._ipipgo白调("add", ip)
+        if 码 not in (0, 200):
+            return False, 说
+        self.查ipipgo白()
+        if isinstance(数, dict):
+            已有 = 数.get("existIp") or []
+            错的 = 数.get("errorRegionIp") or []
+            if ip in 错的:
+                return False, f"{ip} 加失败"
+            if ip in 已有:
+                return True, f"{ip} 已在名单"
+        return True, f"已加入 {ip}"
+
+    def 查ipipgo白(self) -> tuple[bool, list[dict]]:
+        if not self.ipipgo白开():
+            return False, []
+        码, 说, 数 = self._ipipgo白调("fetch", "")
+        if 码 not in (0, 200):
+            self.闪臣态["白名单说"] = 说
+            return False, []
+        原 = 数.get("list") if isinstance(数, dict) else 数
+        列 = []
+        for 一 in (原 or []):
+            if not 一:
+                continue
+            条 = _白条(一)
+            条["家"] = "ipipgo"
+            列.append(条)
+        self.闪臣态["go白"] = 列
+        self._合白()
+        return True, 列
+
+    def _合白(self) -> None:
+        self.闪臣态["白名单"] = (
+            list(self.闪臣态.get("闪臣白") or []) + list(self.闪臣态.get("go白") or [])
+        )
 
     def 查余额(self) -> tuple[bool, str]:
         if not self.闪臣开():
@@ -922,21 +1153,30 @@ class 池:
             self.闪臣态["白名单说"] = 说
             return False, []
         原 = 数.get("whitelist") if isinstance(数, dict) else 数
-        列 = [_白条(一) for 一 in (原 or []) if 一]
-        self.闪臣态["白名单"] = 列
+        列 = []
+        for 一 in (原 or []):
+            if not 一:
+                continue
+            条 = _白条(一)
+            条["家"] = "shanchen"
+            列.append(条)
+        self.闪臣态["闪臣白"] = 列
+        self._合白()
         return True, 列
 
     def 刷闪臣(self) -> None:
         """余额、白名单、本机出口 IP 一次刷全。阻塞，需放线程里跑。"""
-        if not self.闪臣开():
-            return
         self.闪臣态["本机IP"] = self.本机出口IP()
-        self.查余额()
-        self.查白名单()
+        if self.闪臣开():
+            self.查余额()
+            self.查白名单()
+        if self.ipipgo白开():
+            self.查ipipgo白()
         self.闪臣态["刷时间"] = time.strftime("%H:%M:%S")
 
     async def 一键开跑(self, 键: str, 码: str, 供应商: str = "",
-                    go_key: str = "", go_user: str = "", go_pass: str = "") -> list[str]:
+                    go_key: str = "", go_user: str = "", go_pass: str = "",
+                    go_white: str = "") -> list[str]:
         """面板上就这一个按钮：存两家的参数、加白名单、提一批、开定时换新。"""
         补: dict[str, Any] = {"sc_white": 1}
         if 供应商:
@@ -951,6 +1191,8 @@ class 池:
             补["go_user"] = go_user
         if go_pass:
             补["go_pass"] = go_pass
+        if go_white:
+            补["go_white"] = go_white
         # 第一次开跑才铺默认值。之后再点，高级设置里调过的地区、条数不能被冲掉
         if not self.有拉取源():
             补.update({
@@ -968,19 +1210,18 @@ class 池:
             步.append(f"闪臣 Key {遮(键)}" + ("，安全码已更新" if 码 else ""))
         if go_key:
             步.append("IPIPGO 凭证已更新")
+        if go_white:
+            步.append("IPIPGO 白名单接口已更新")
+        if self.闪臣开() and not str(self.设.get("sc_code") or "").strip():
+            步.append("闪臣还没存安全码——闪臣加白名单必须要它。")
+        if self.可自动白():
+            await asyncio.to_thread(self.加白名单)
+        await asyncio.to_thread(self.刷闪臣)
+        快 = self.闪臣快照()
         if self.闪臣开():
-            if not str(self.设.get("sc_code") or "").strip():
-                步.append("闪臣还没存安全码——加白名单必须要它。")
-            else:
-                await asyncio.to_thread(self.加白名单)
-            await asyncio.to_thread(self.刷闪臣)
-            快 = self.闪臣快照()
             步.append(f"闪臣剩余：{快['余额'] or 快['余额说'] or '查不到'}")
-            步.append(f"本机出口 IP {快['本机IP'] or '没问到'}："
-                      + ("已在闪臣白名单" if 快["已加白"] else "不在闪臣白名单"))
-        elif self.ipipgo开():
-            本 = self.本机出口IP()
-            步.append(f"本机出口 IP {本 or '没问到'}。IPIPGO 要在他们后台把这个 IP 加白名单。")
+        步.append(f"本机出口 IP {快['本机IP'] or '没问到'}："
+                  + ("已在白名单" if 快["已加白"] else "不在白名单"))
         步.append(await self.换新())
         步.append(f"自动换新：{self.换说()}，每批 {int(self.设.get('sc_count') or 1)} 条、一国")
         return 步
@@ -1037,16 +1278,28 @@ class 池:
     def 闪臣快照(self) -> dict[str, Any]:
         本机 = str(self.闪臣态.get("本机IP") or "")
         白 = list(self.闪臣态.get("白名单") or [])
+        闪白 = bool(本机) and any(一.get("ip") == 本机 and 一.get("家") != "ipipgo" for 一 in 白)
+        go白 = bool(本机) and any(一.get("ip") == 本机 and 一.get("家") == "ipipgo" for 一 in 白)
+        源 = self.当前源()
+        if 源 == "ipipgo":
+            已 = go白
+        elif 源 == "shanchen":
+            已 = 闪白
+        else:
+            已 = 闪白 or go白
         return {
-            "开": self.闪臣开() or self.ipipgo开(),
+            "开": self.闪臣开() or self.ipipgo开() or self.ipipgo白开(),
             "闪臣开": self.闪臣开(),
             "ipipgo开": self.ipipgo开(),
+            "ipipgo白开": self.ipipgo白开(),
             "供应商": self.源名(),
             "供应商选": self.设.get("provider") or "auto",
             "go_key": self.设.get("go_key") or "",
             "go_url": self.设.get("go_url") or "",
             "go_user": self.设.get("go_user") or "",
+            "go_white_key": self.设.get("go_white_key") or "",
             "有go密": bool(str(self.设.get("go_pass") or "").strip()),
+            "有go签": bool(str(self.设.get("go_sign") or "").strip()),
             "有码": bool(str(self.设.get("sc_code") or "").strip()),
             # 只报位数，好让人一眼看出存进去的是不是自己那串
             "码长": len(str(self.设.get("sc_code") or "").strip()),
@@ -1056,7 +1309,9 @@ class 池:
             "白名单": 白,
             "白名单说": self.闪臣态.get("白名单说") or "",
             "本机IP": 本机,
-            "已加白": bool(本机) and any(一.get("ip") == 本机 for 一 in 白),
+            "已加白": 已,
+            "闪臣已加白": 闪白,
+            "ipipgo已加白": go白,
             "刷时间": self.闪臣态.get("刷时间") or "",
             "提取地址": self.提取地址显(),
             "地区": self.地区说(),
@@ -1273,6 +1528,14 @@ class 池:
             出 = self._抽一次(址, "")
             if 出:
                 return 出
+            if self.ipipgo白开() and int(self.设.get("sc_white") or 0):
+                好, 白说 = self._ipipgo加白(self.本机出口IP())
+                日志.info("IPIPGO 提取空，自动加白名单：%s", 白说)
+                if 好:
+                    time.sleep(2)
+                    出 = self._抽一次(址, "")
+                    if 出:
+                        return 出
         return self._ipipgo账密批(国, 数)
 
     def _抽源(self, 源: str, 国: str, 州: str, 市: str, 数: int) -> list[dict]:
@@ -1360,7 +1623,7 @@ class 池:
         return [(国, "", "") for 国 in 候选]
 
     def 拉取一批(self, 数: int | None = None, 换国: bool = False) -> list[dict]:
-        """一次提够指定条数。按用户选的源来；自动则谁能提用谁。"""
+        """一次提够指定条数。两家都配时混合提取（条数均分，一家空了另一家补）。"""
         令 = str(self.设.get("fetch_cmd") or "").strip()
         数 = self.提取条数(数)
         源们 = self.源顺序()
@@ -1369,17 +1632,33 @@ class 池:
             return self._抽一次(址, 令) if 址 or 令 else []
 
         最后 = ""
-        for 源 in 源们:
-            for 地 in self._地区候选(换国):
-                出 = self._抽源(源, *地, 数)
-                if 出:
-                    self.上次源 = 源
-                    self._记这批(*地)
-                    说 = f"{self.源名(源)} 这批 {self.这批地区}，一次 {len(出)} 条"
-                    self.上次补 = 说
-                    日志.info("%s", 说)
-                    return 出
-                最后 = self.上次补
+        for 地 in self._地区候选(换国):
+            出: list[dict] = []
+            见: set[str] = set()
+            用过: list[str] = []
+            份 = len(源们)
+            for i, 源 in enumerate(源们):
+                n = 数 - len(出)
+                if n <= 0:
+                    break
+                这份 = n if i == 份 - 1 else max(1, 数 // 份)
+                批 = self._抽源(源, *地, 这份)
+                if 批:
+                    用过.append(源)
+                for 信 in 批:
+                    k = f"{信.get('方案')}|{信.get('主机')}|{信.get('端口')}|{信.get('用户')}"
+                    if k in 见:
+                        continue
+                    见.add(k)
+                    出.append(信)
+            if 出:
+                self.上次源 = "混合" if len(用过) > 1 else (用过[0] if 用过 else 源们[0])
+                self._记这批(*地)
+                说 = f"{self.源名(self.上次源)} 这批 {self.这批地区}，一次 {len(出)} 条"
+                self.上次补 = 说
+                日志.info("%s", 说)
+                return 出
+            最后 = self.上次补
         if 令:
             return self._抽一次("", 令)
         self.上次补 = 最后 or "两家都提不到"
@@ -1393,30 +1672,38 @@ class 池:
         目标 = max(0, int(self.设.get("pool_size") or 0))
         async with self.锁:
             健康数 = len(self.健康们())
+            提取数 = len(self.提取们())
         if 目标 <= 0 or 健康数 >= 目标:
-            return "池已够，不补"
+            return "工作池已够，不补"
+        if 健康数 + 提取数 >= 目标:
+            return f"提取池还在验 {提取数} 条，工作 {健康数}/{目标}"
         if not self.有拉取源():
-            说 = "健康不足但没配提取来源（闪臣 / IPIPGO / fetch_url），保持现有池"
+            说 = "工作池不足但没配提取来源（闪臣 / IPIPGO / fetch_url），保持现有池"
             self.上次补 = 说
             return 说
-        要 = 目标 - 健康数
+        要 = 目标 - 健康数 - 提取数
+        if not self.这批号:
+            self.这批号 = int(time.time())
         成 = 0
         批 = await asyncio.to_thread(self.拉取一批, 要, False)
-        for 信 in 批:
-            if 成 >= 要:
-                break
-            try:
-                await self.加(信, 来源="拉取")
-                成 += 1
-            except ValueError as 错:
-                日志.warning("拉取入池失败：%s", 错)
-        说 = f"补入 {成} 条，健康 {len(self.健康们())}/{目标}"
+        async with self.锁:
+            for 信 in 批:
+                if 成 >= 要:
+                    break
+                try:
+                    self._塞(信, 来源="拉取", 落盘=False, 档="提取", 批=self.这批号)
+                    成 += 1
+                except ValueError as 错:
+                    日志.warning("拉取入提取池失败：%s", 错)
+            if 成:
+                self.落盘()
+        说 = f"提入提取池 {成} 条，工作 {len(self.健康们())}/{目标}，待验 {len(self.提取们())}"
         self.上次补 = 说
         日志.info("%s", 说)
         return 说
 
     async def 换新(self) -> str:
-        """先入新一批，旧拉取线路标退役。新连接走新 IP；旧连接把回包走完再丢。手加不动。"""
+        """新一批进提取池先验。工作池里旧的继续服务，验过再交替。"""
         if not self.有拉取源():
             说 = "未配置提取接口，无法换新"
             self.上次补 = 说
@@ -1431,35 +1718,25 @@ class 池:
             return 说
         async with self.锁:
             self._收旧()
-            旧 = [一 for 一 in self.条们 if self._提取的(一) and not 一.退役]
+            self.这批号 = int(time.time())
             新成 = 0
             for 信 in 批:
                 try:
-                    入 = self._塞(信, 来源="拉取", 落盘=False)
-                    if 入 in 旧:
-                        旧.remove(入)
+                    self._塞(信, 来源="拉取", 落盘=False, 档="提取", 批=self.这批号)
                     新成 += 1
                 except ValueError as 错:
-                    日志.warning("换新入池失败：%s", 错)
+                    日志.warning("换新入提取池失败：%s", 错)
             if 新成 <= 0:
-                说 = f"换新入池 0 条，保持原池 {time.strftime('%H:%M:%S')}"
+                说 = f"换新入提取池 0 条，工作池不动 {time.strftime('%H:%M:%S')}"
                 self.上次补 = 说
                 日志.warning("%s", 说)
                 return 说
-            now = time.monotonic()
-            旧号 = {一.号 for 一 in 旧}
-            for 一 in 旧:
-                一.退役 = True
-                一.退役于 = now
-            self.粘 = {k: v for k, v in self.粘.items() if v not in 旧号}
-            丢 = self._收旧()
             self.落盘()
-            数 = len([一 for 一 in self.条们 if self._提取的(一) and not 一.退役])
-            等走 = len([一 for 一 in self.条们 if 一.退役])
+            工 = len(self.健康们())
         self.上次换新 = time.strftime("%Y-%m-%d %H:%M:%S")
         地 = f"，{self.这批地区}" if self.这批地区 else ""
-        尾 = f"，{等走} 条交替中" if 等走 else (f"，到期旧线路已下 {丢} 条" if 丢 else "")
-        说 = f"已换新{地}，新 {数} 条{尾} {time.strftime('%H:%M:%S')}"
+        说 = (f"已提入提取池{地} {新成} 条，工作池 {工} 条继续服务，"
+              f"验过再换 {time.strftime('%H:%M:%S')}")
         self.上次补 = 说
         日志.info("%s", 说)
         return 说
@@ -1493,6 +1770,7 @@ class 池:
             "go_key": self.设.get("go_key") or "",
             "go_url": self.设.get("go_url") or "",
             "go_user": self.设.get("go_user") or "",
+            "go_white_key": self.设.get("go_white_key") or "",
             "闪臣": self.闪臣快照(),
             "版本": 版本,
             "上次补": self.上次补,
@@ -1509,6 +1787,8 @@ class 池:
             "更新说": self.更新说,
             "上轮验活": self.上轮验活,
             "健康": len(self.健康们()),
+            "工作": len(self.健康们()),
+            "提取": len(self.提取们()),
             "总数": len(self.条们),
             "上行": sum(一.上行 for 一 in self.条们),
             "下行": sum(一.下行 for 一 in self.条们),
