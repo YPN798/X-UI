@@ -132,9 +132,29 @@ def _地址们(底: str, 名: str, 提交: str = "") -> list[str]:
     return 净
 
 
-def _像代码(数据: bytes) -> bool:
+# raw 下到 GitHub / jsDelivr 错误页时的痕迹。面板本身就是 HTML，
+# 不能再靠「以 <!DOCTYPE 开头」一刀切，否则 面板.html 永远拉不下来。
+_错页 = (
+    b"404: not found",
+    b"couldn't find the requested file",
+    b"this is not the web page you are looking for",
+    b"repository not found",
+    b"<title>404",
+    b"failed to fetch",
+    b"cannot find package",
+)
+
+
+def _像文件(名: str, 数据: bytes) -> bool:
     if not 数据 or not 数据.strip():
         return False
+    低 = 数据[:8000].lower()
+    if any(痕 in 低 for 痕 in _错页):
+        return False
+    if 名.endswith((".html", ".htm")):
+        return (b"xui-bridge" in 低
+                or "桥控制台".encode("utf-8") in 数据[:8000]
+                or b"<html" in 低 or b"<!doctype" in 低)
     头 = 数据.lstrip()[:80].lower()
     return not (头.startswith(b"<!doctype") or 头.startswith(b"<html"))
 
@@ -148,7 +168,7 @@ def _下一个(底: str, 名: str, 超时: float = 60, 提交: str = "") -> byte
         except Exception as 错:
             错们.append(f"{址}：{错}")
             continue
-        if _像代码(数据):
+        if _像文件(名, 数据):
             return 数据
         错们.append(f"{址} 返回了网页而不是文件")
     raise OSError("；".join(错们[:3]) or "没有可用的下载地址")
