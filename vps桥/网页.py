@@ -60,7 +60,7 @@ _饼干名 = "xui_bridge"
     {"method": "POST", "path": "/api/set", "desc": "改设置，只改传入的字段。返回最新 config",
      "body": {"sc_cntry": "JP", "pool_size": 50, "auto_rotate": 300}},
     {"method": "POST", "path": "/api/fill", "desc": "按目标条数补池"},
-    {"method": "POST", "path": "/api/rotate", "desc": "每次提 50，先验活再入池。旧拉取退役；全挂也下掉，允许空池。拉取最多活 5 分钟"},
+    {"method": "POST", "path": "/api/rotate", "desc": "各源各提 50，先验活再入池。自动时一家出错不挡其他，只换成功那家的旧线路。拉取最多活 5 分钟"},
     {"method": "POST", "path": "/api/add", "desc": "手动加代理。串=多行文本，或 proxies=数组",
      "body": {"proxies": ["socks5://user:pass@1.2.3.4:1080"]}},
     {"method": "POST", "path": "/api/del", "desc": "按号删一条", "body": {"id": "…"}},
