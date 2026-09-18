@@ -60,7 +60,7 @@ _饼干名 = "xui_bridge"
     {"method": "POST", "path": "/api/set", "desc": "改设置，只改传入的字段。返回最新 config",
      "body": {"sc_cntry": "JP", "pool_size": 50, "auto_rotate": 300}},
     {"method": "POST", "path": "/api/fill", "desc": "按目标条数补池"},
-    {"method": "POST", "path": "/api/rotate", "desc": "各源按写死条数提：闪臣 50 条/1-6小时，1024 50 条/30分钟。一家失败不挡其他"},
+    {"method": "POST", "path": "/api/rotate", "desc": "立刻换新一批。工作池 3 分钟自动换，满 4 分钟下线防硬断。提取规格仍是闪臣 1-6 小时 / 1024 30 分钟"},
     {"method": "POST", "path": "/api/add", "desc": "手动加代理。串=多行文本，或 proxies=数组",
      "body": {"proxies": ["socks5://user:pass@1.2.3.4:1080"]}},
     {"method": "POST", "path": "/api/del", "desc": "按号删一条", "body": {"id": "…"}},

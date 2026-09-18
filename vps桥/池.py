@@ -165,7 +165,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-19.1"
+版本 = "2026-09-19.2"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -174,11 +174,9 @@ p24主机 = "1024proxy"
 闪臣内置键 = "AKic7DLPhEk1t070m8jtaw651swf6f9j"
 闪臣内置码 = "ypn940815"
 闪臣条数 = 50
-闪臣时档 = 2  # 1-6 小时
-闪臣寿秒 = 6 * 3600
+闪臣时档 = 2  # 提取规格：1-6 小时。工作池使用时长另算
 p24条数 = 50
-p24时分 = 30
-p24寿秒 = 30 * 60
+p24时分 = 30  # 提取规格：粘性 30 分钟。工作池使用时长另算
 # 1024 白名单提取写死，不再跟面板国家/条数/时长走
 p24提取址 = (
     f"https://white.1024proxy.com/white/api"
@@ -262,10 +260,10 @@ def _读环境令(另: Path | None = None) -> str:
 
 
 _抽态 = threading.local()
-# 换新后旧线路最多再留这么久：有连接的把回包走完，超时也从池里拿掉（套接字仍由转发握着）
-交叠秒 = 30
-# 未标来源的拉取线路兜底寿限。闪臣 / 1024 各走自己的寿秒
-池寿秒 = 300
+# 3 分钟换新；满 4 分钟才从名单拿掉。多出的 1 分钟给旧连接收尾，避免硬断
+换期秒 = 180
+池寿秒 = 240
+交叠秒 = 60
 
 # 三格留空时每批从配置里的随机国库抽一个。下面是出厂名单，面板和 API 都能加减。
 默随机国库 = (
@@ -326,19 +324,12 @@ class 条:
         # 换新时先入新一批，旧的标退役：不再接新连接，等已有连接把回包走完
         self.退役 = False
         self.退役于 = 0.0
-        # 入池于=单调钟，进程内算寿；入时=墙上时钟，重启后仍按各源寿限下线
+        # 入池于=单调钟，进程内算寿；入时=墙上时钟，重启后满 4 分钟必下
         self.入池于 = float(信.get("入池于") or 0)
         self.入时 = float(信.get("入时") or 0)
         self.批次 = int(信.get("批次") or 0)
 
     def 寿秒(self) -> int:
-        家 = ""
-        if self.来源.startswith("拉取/"):
-            家 = self.来源.split("/", 1)[1]
-        if 家 == "1024" or p24主机 in self.主机:
-            return p24寿秒
-        if 家 == "shanchen" or 闪臣主机 in self.主机:
-            return 闪臣寿秒
         return 池寿秒
 
     def 键(self) -> str:
@@ -876,20 +867,18 @@ class 池:
         return bool(int(self.设.get("proxy_on") or 0))
 
     def 池寿(self, 源: str = "") -> int:
-        if 源 == "1024":
-            return p24寿秒
-        if 源 in ("shanchen", "闪臣"):
-            return 闪臣寿秒
         return 池寿秒
 
     def 有效换期(self) -> int:
-        """各源按自己寿限补齐，不再统一换新。"""
-        return 0
+        """3 分钟换新。满 4 分钟才下线，中间 1 分钟给旧连接收尾。"""
+        if not self.代理开():
+            return 0
+        return 换期秒
 
     def 换说(self) -> str:
         if not self.代理开():
             return "代理已关，X-UI 已恢复原设置"
-        return f"各源独立补齐：闪臣 {闪臣条数} 条/1-6小时，1024 {p24条数} 条/{p24时分} 分钟"
+        return "每 3 分钟换新，最多用 4 分钟（1 分钟交叠防硬断）"
 
     def 下次换秒(self) -> int:
         """还有多少秒换下一批。没开自动换新返回 -1。"""
@@ -904,12 +893,14 @@ class 池:
                 if 一.启用 and 一.健康 and not 一.退役 and not self._过期了(一, now)]
 
     def 可接们(self) -> list[条]:
-        """只接没过期的。过期拉取不再顶上，否则四小时了还能打到旧线上。"""
+        """新连接只走本批。上批有连接的留着收尾，满 4 分钟再拿掉。"""
         新 = self.健康们()
-        if 新:
-            return 新
-        return [一 for 一 in self.条们
-                if 一.启用 and not 一.退役 and not self._提取的(一)]
+        if not 新:
+            return [一 for 一 in self.条们
+                    if 一.启用 and not 一.退役 and not self._提取的(一)]
+        代 = int(self.换代 or 0)
+        本 = [一 for 一 in 新 if (not self._提取的(一)) or int(一.批次 or 0) == 代]
+        return 本 or 新
 
     def _提取的(self, 一: 条) -> bool:
         return (一.来源 == "拉取" or 一.来源.startswith("拉取/")
@@ -1286,10 +1277,12 @@ class 池:
 
     def _源活数(self, 源: str) -> int:
         now = time.monotonic()
+        代 = int(self.换代 or 0)
         return sum(
             1 for 一 in self.条们
             if self._提取的(一) and not 一.退役
             and not self._过期了(一, now) and self._条源(一) == 源
+            and int(一.批次 or 0) == 代
         )
 
     def _1024令(self) -> str:
@@ -1970,6 +1963,7 @@ class 池:
                 "闪臣时长": "1-6小时",
                 "p24条数": p24条数,
                 "p24时长": f"{p24时分}分钟",
+                "使用": "3分钟换新 / 最多4分钟",
             },
         }
 
