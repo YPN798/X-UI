@@ -224,7 +224,7 @@ tr.档-退役{opacity:.55}
   <section id="页-代理池" class="hide">
     <div class="card">
       <h2>代理池</h2>
-      <p class="desc">拉取线路满 5 分钟必下，过期不再接新连接。青=刚提取 · 蓝=本批 · 黄=上批未满寿还挂着连接。</p>
+      <p class="desc">各源寿限独立：闪臣 1-6 小时，1024 30 分钟。到期不再接新连接。青=刚提取 · 蓝=本批 · 黄=上批未满寿还挂着连接。</p>
       <div class="rowbar">
         <input id="池滤" placeholder="过滤地址 / 出口 / 来源">
         <button class="btn" id="补">再提一轮</button>
@@ -239,7 +239,7 @@ tr.档-退役{opacity:.55}
   <section id="页-提取源" class="hide">
     <div class="card">
       <h2>提取源</h2>
-      <p class="desc">自动：各源问一次，给几条入几条。一家出错不挡其他。1024 写死可提。白名单已手加，加白不挡提取。</p>
+      <p class="desc">独立运行：闪臣写死 50 条 / 1-6 小时，1024 写死 50 条 / 30 分钟。一家出错不挡其他。开机自查白名单，不在则自动加。</p>
       <form id="闪" class="form">
         <label class="f">用哪家
           <select name="provider">
@@ -249,9 +249,11 @@ tr.档-退役{opacity:.55}
             <option value="1024">1024</option>
           </select>
         </label>
-        <label class="f wide">闪臣 API Key<input name="sc_key" placeholder="闪臣个人中心"></label>
+        <label class="f wide">闪臣 API Key
+          <input name="sc_key" value="已写死" disabled title="程序写死，不可改">
+        </label>
         <label class="f">闪臣安全码
-          <input name="sc_code" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')">
+          <input name="sc_code" type="password" value="********" disabled title="程序写死，不可改">
         </label>
         <label class="f wide">IPIPGO Key 或提取链接
           <input name="go_key" placeholder="动态标准后台的 key，或整段 https://api.ipipgo.com/getip?...">
@@ -283,15 +285,21 @@ tr.档-退役{opacity:.55}
   <section id="页-设置" class="hide">
     <div class="card">
       <h2>提取与地区</h2>
-      <p class="desc">国家留空则每批从下面「随机地区」里抽一个。钉死某国则不随机。</p>
+      <p class="desc">闪臣 50 条 / 1-6 小时、1024 50 条 / 30 分钟已写死，保存改不了。国家留空则每批随机。</p>
       <form id="设" class="form">
-        <label class="f">闪臣单次条数 <input name="sc_count" type="number" min="1" max="500" title="轻质换新不凑这个数"></label>
-        <label class="f">IP 保持多久
-          <select name="sc_time">
-            <option value="0">每次更换 IP（5-30 分钟）</option>
-            <option value="2">1-6 小时</option>
-            <option value="1">每次请求更换 IP</option>
+        <label class="f">闪臣单次条数
+          <input name="sc_count" type="number" value="50" disabled title="写死 50 条">
+        </label>
+        <label class="f">闪臣 IP 时长
+          <select name="sc_time" disabled title="写死 1-6 小时">
+            <option value="2">1-6 小时（写死）</option>
           </select>
+        </label>
+        <label class="f">1024 单次条数
+          <input name="p24_count" type="number" value="50" disabled title="写死 50 条">
+        </label>
+        <label class="f">1024 IP 时长
+          <input name="p24_time_show" value="30 分钟（写死）" disabled>
         </label>
         <label class="f">套餐协议
           <select name="sc_protocol"><option value="s5">socks5</option><option value="http">http</option></select>
@@ -304,7 +312,9 @@ tr.档-退役{opacity:.55}
         <label class="f">州/省 <input name="sc_state" placeholder="留空=整国"></label>
         <label class="f">城市 <input name="sc_city" placeholder="留空=整国"></label>
         <label class="f">撞白名单自动加
-          <select name="sc_white"><option value="1">开</option><option value="0">关</option></select>
+          <select name="sc_white" disabled title="写死：开机自查，不在则加">
+            <option value="1">开（写死）</option>
+          </select>
         </label>
         <label class="f">分发
           <select name="mode">
@@ -487,27 +497,36 @@ function 填闪(s){
   const 白=s.白名单||[];
   const 余=s.余额?("<b>"+esc(s.余额)+"</b>"):"<span class=muted>还没查到</span>";
   const 本=s.本机IP?esc(s.本机IP):"没问到";
-  const 态=s.本机IP?(s.已加白?"<span class='pill ok'>已在白名单</span>"
+  const 闪白=s.本机IP?(s.闪臣已加白?"<span class='pill ok'>闪臣已加</span>"
+                            :(s.闪臣开?"<span class='pill bad'>闪臣未加</span>":""))
+                  :"";
+  const 千白=s.本机IP?(s.p24已加白?"<span class='pill ok'>1024已加</span>"
+                            :(s.p24开?"<span class='pill bad'>1024未加</span>":""))
+                  :"";
+  const 态=闪白+" "+千白 || (s.本机IP?(s.已加白?"<span class='pill ok'>已在白名单</span>"
                             :"<span class='pill bad'>不在白名单</span>")
-                  :"<span class='pill mute'>白名单未知</span>";
-  let h="<h2>源状态</h2><p class=desc>余额、本机出口、白名单。闪臣 1004 或 1024 提取为空，多半是没加白。</p>";
+                  :"<span class='pill mute'>白名单未知</span>");
+  let h="<h2>源状态</h2><p class=desc>各源白名单独立。不在则自动加，一家失败不挡另一家。</p>";
   h+=行("剩余流量", 余+(s.余额说?" · "+esc(s.余额说):""));
   h+=行("本机出口 IP", 本+" "+态);
+  const 锁=s.锁死||{};
+  if(锁.闪臣条数) h+=行("写死参数", "闪臣 "+锁.闪臣条数+" 条 / "+锁.闪臣时长+"；1024 "+锁.p24条数+" 条 / "+锁.p24时长);
   h+=行("提取地址", "<span class=mono>"+esc(s.提取地址||"—")+"</span>");
   if(s.白名单说) h+="<p class=desc>"+esc(s.白名单说)+"</p>";
   if(s.闪臣开 && !s.有码) h+="<p class=desc>没存闪臣安全码，闪臣加删白名单都用不了。</p>";
   if(s.p24_white && s.p24开 && !s.有token) h+="<p class=desc>没存 1024 token，自动加白用不了。提取不靠它。</p>";
   if(白.length){
-    h+="<table style=margin-top:10px><thead><tr><th>白名单 IP</th><th>备注</th><th></th></tr></thead><tbody id=白表></tbody></table>";
+    h+="<table style=margin-top:10px><thead><tr><th>源</th><th>白名单 IP</th><th>备注</th><th></th></tr></thead><tbody id=白表></tbody></table>";
   }else h+="<p class=desc>白名单是空的。</p>";
   盒.innerHTML=h;
   const tb=document.getElementById("白表");
   if(!tb) return;
   白.forEach(w=>{
     const tr=document.createElement("tr");
-    tr.innerHTML="<td class=mono></td><td></td><td></td>";
-    tr.cells[0].textContent=w.ip||"";
-    tr.cells[1].textContent=w.备注||"";
+    tr.innerHTML="<td></td><td class=mono></td><td></td><td></td>";
+    tr.cells[0].textContent=w.源||"";
+    tr.cells[1].textContent=w.ip||"";
+    tr.cells[2].textContent=w.备注||"";
     const b=document.createElement("button");
     b.className="btn bad"; b.textContent="删除";
     b.onclick=async()=>{
@@ -516,7 +535,7 @@ function 填闪(s){
       catch(e){ 吐(e.message,1); }
       刷();
     };
-    tr.cells[2].appendChild(b);
+    tr.cells[3].appendChild(b);
     tb.appendChild(tr);
   });
 }
@@ -584,7 +603,7 @@ function 填表(d){
   const 列=d.池||d.proxies||[];
   const 序=["刚提取","本批","上批","手加","退役"];
   const 题={刚提取:"刚提取",本批:"本批新代理",上批:"上批还在干活",手加:"手加",退役:"交替下线"};
-  const 注={刚提取:"这一轮刚进池，还不到 45 秒",本批:"本轮换新加入的，满 5 分钟必下",上批:"未满寿且还挂着连接；空闲或到期的会收掉",手加:"不是提取来的",退役:"已到期，不再接新连接"};
+  const 注={刚提取:"这一轮刚进池，还不到 45 秒",本批:"本轮换新加入的，闪臣满 6 小时、1024 满 30 分钟必下",上批:"未满寿且还挂着连接；空闲或到期的会收掉",手加:"不是提取来的",退役:"已到期，不再接新连接"};
   const 组={};
   序.forEach(k=>组[k]=[]);
   列.forEach(p=>{
@@ -689,7 +708,7 @@ function 填(d){
     行("最近补池", esc(d.上次补||"—"))+
     行("更新", esc(d.更新说||"—"))+
     行("本机 IP", esc(s.本机IP||"—"))+
-    行("白名单", s.已加白?"已加入":(s.本机IP?"未加入":"未知"));
+    行("白名单", (s.闪臣已加白?"闪臣已加":"闪臣未加")+" / "+(s.p24已加白?"1024已加":"1024未加"));
 
   填闪(s);
   填国(d);
@@ -774,12 +793,12 @@ document.getElementById("闪").onsubmit=e=>{
   const f=e.target;
   return 忙("开跑","正在开跑…",async()=>{
     const j=await api("/api/sc/setup",{
-      provider:f.provider.value, key:f.sc_key.value.trim(), code:f.sc_code.value,
+      provider:f.provider.value,
       go_key:f.go_key.value.trim(), go_user:f.go_user.value.trim(), go_pass:f.go_pass.value,
       p24_token:f.p24_token.value, p24_user:f.p24_user.value.trim(),
       p24_pass:f.p24_pass.value, p24_url:f.p24_url.value.trim()
     });
-    f.sc_code.value=""; f.go_pass.value=""; f.p24_token.value=""; f.p24_pass.value=""; 脏["闪"]=0;
+    f.go_pass.value=""; f.p24_token.value=""; f.p24_pass.value=""; 脏["闪"]=0;
     const 尾=await 等到提取完(180);
     return ((j.步||[]).join("\n")+"\n"+尾).trim();
   });
@@ -794,10 +813,8 @@ document.getElementById("设").onsubmit=e=>{
       check_interval:+f.check_interval.value, check_conc:+f.check_conc.value,
       fetch_url:f.fetch_url.value, fetch_cmd:f.fetch_cmd.value,
       auto_rotate:+f.auto_rotate.value, fetch_scheme:f.fetch_scheme.value,
-      sc_count:+f.sc_count.value, sc_time:+f.sc_time.value,
       sc_protocol:f.sc_protocol.value, sc_cntry:f.sc_cntry.value.trim(),
       sc_state:f.sc_state.value.trim(), sc_city:f.sc_city.value.trim(),
-      sc_white:+f.sc_white.value,
       auto_update:+f.auto_update.value, update_minutes:+f.update_minutes.value,
       wall_check:+f.wall_check.value, wall_minutes:+f.wall_minutes.value,
       wall_port:+f.wall_port.value, proxy_on:+f.proxy_on.value
