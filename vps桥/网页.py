@@ -73,6 +73,8 @@ _饼干名 = "xui_bridge"
     {"method": "POST", "path": "/api/sc/refresh", "desc": "刷新余额和白名单"},
     {"method": "POST", "path": "/api/update", "desc": "立刻检查并更新桥代码"},
     {"method": "POST", "path": "/api/wall", "desc": "立刻做一次国内回探，看节点端口是否被墙"},
+    {"method": "POST", "path": "/api/proxy", "desc": "开/关桥分流。关则恢复 X-UI 原设置",
+     "body": {"on": 0}},
     {"method": "GET", "path": "/api/stats", "desc": "每日流量：今日消耗 + 最近 60 天表"},
     {"method": "POST", "path": "/api/traffic/reset", "desc": "累计流量从现在重新算（日表保留）"},
     {"method": "POST", "path": "/api/passwd", "desc": "改管理密码", "body": {"web_pass": "新密码"}},
@@ -100,7 +102,7 @@ def 接口目录() -> dict:
         "接口": [dict(一) for 一 in 接口表],
         "字段": {
             "health": ["版本", "listen", "web", "健康", "总数", "供应商", "这批地区",
-                       "上次补", "上次换新", "墙态", "墙说", "墙口"],
+                       "上次补", "上次换新", "墙态", "墙说", "墙口", "proxy_on"],
             "池条目": ["号", "地址", "方案", "来源", "退役", "启用", "健康", "失败", "连接",
                       "上行", "下行", "上行文", "下行文", "出口", "上次错误", "上次切换"],
             "日表条目": ["日", "上行", "下行", "合计", "上行文", "下行文", "合计文"],
@@ -110,7 +112,7 @@ def 接口目录() -> dict:
                     "pool_size", "fail_n", "check_interval", "check_conc", "connect_timeout",
                     "auto_rotate", "sc_count", "sc_time", "sc_white", "go_port",
                     "auto_update", "update_minutes", "wall_check", "wall_minutes",
-                    "wall_port", "sc_code", "go_pass", "随机国库"],
+                    "wall_port", "proxy_on", "sc_code", "go_pass", "随机国库"],
             "出厂随机国库": list(默随机国库),
             "国名": dict(国名表),
         },
@@ -132,6 +134,7 @@ def 健康视图(池子: 池) -> dict:
         "墙态": 池子.墙态,
         "墙说": 池子.墙说,
         "墙口": 池子.墙口,
+        "proxy_on": int(池子.设.get("proxy_on") or 0),
     }
 
 
@@ -590,10 +593,16 @@ async def 处理管理(读, 写, 池子: 池) -> None:
         elif 法 == "POST" and 路 == "/api/set":
             数据.pop("pass", None)
             数据.pop("web_pass", None)
+            旧开 = 池子.代理开()
             await 池子.改设(数据)
             身 = 池子.配置快照()
             身["ok"] = True
             身["msg"] = "已保存"
+            if "proxy_on" in 数据 and 池子.代理开() != 旧开:
+                from 写入分流 import 对齐分流
+                池子.分流说 = await asyncio.to_thread(对齐分流, 池子.代理开())
+                身["msg"] = 池子.分流说
+                身["分流说"] = 池子.分流说
             _json(写, 200, 身)
         elif 法 == "POST" and 路 == "/api/passwd":
             新 = str(数据.get("web_pass") or 数据.get("新") or "").strip()
@@ -616,6 +625,22 @@ async def 处理管理(读, 写, 池子: 池) -> None:
             说 = await asyncio.to_thread(池子.查墙一次)
             _json(写, 200, {"ok": True, "msg": 说, "墙态": 池子.墙态,
                             "墙说": 池子.墙说, "墙口": 池子.墙口})
+        elif 法 == "POST" and 路 == "/api/proxy":
+            if "on" in 数据:
+                开 = 数据.get("on")
+            elif "proxy_on" in 数据:
+                开 = 数据.get("proxy_on")
+            else:
+                开 = None
+            if 开 in (None, ""):
+                _json(写, 400, {"ok": False, "err": "要 on 或 proxy_on"})
+            else:
+                await 池子.改设({"proxy_on": int(开)})
+                from 写入分流 import 对齐分流
+                说 = await asyncio.to_thread(对齐分流, 池子.代理开())
+                池子.分流说 = 说
+                _json(写, 200, {"ok": True, "msg": 说, "proxy_on": int(池子.设.get("proxy_on") or 0),
+                                "分流说": 说})
         elif 法 == "GET" and 路 == "/api/stats":
             身 = 池子.日统计()
             身["ok"] = True

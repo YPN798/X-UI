@@ -40,6 +40,7 @@ def 用北京时间() -> None:
 
 from 池 import 池
 from 更新 import 补缺旁文件, 自动更新循环
+from 写入分流 import 对齐分流
 from 转发 import 开socks, 验活循环, 查墙循环
 
 补缺旁文件()
@@ -66,6 +67,12 @@ def 默配置径() -> Path:
 async def 跑(径: Path) -> None:
     池子 = 池(径)
     停 = asyncio.Event()
+    try:
+        池子.分流说 = await asyncio.to_thread(对齐分流, 池子.代理开())
+        日志.info("分流：%s", 池子.分流说)
+    except Exception as 错:
+        池子.分流说 = f"对齐分流失败：{错}"
+        日志.warning("%s", 池子.分流说)
     socks = await 开socks(池子)
     页 = await 开网页(池子)
     验 = asyncio.create_task(验活循环(池子, 停))

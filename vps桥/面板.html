@@ -150,7 +150,9 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
   <span class="chip">SOCKS <b id="顶听">—</b></span>
   <span class="chip">版本 <b id="顶版">—</b></span>
   <span class="chip hide" id="墙片"><span id="墙文">墙检</span></span>
+  <span class="chip bad" id="代理片">代理已关</span>
   <div class="spacer"></div>
+  <button class="btn bad" type="button" id="代理钮">关闭代理</button>
   <a class="btn" href="/docs" target="_blank" rel="noopener">对接文档</a>
   <a class="btn hide" id="去面板" target="_blank" rel="noopener">X-UI 面板</a>
   <button class="ghost btn" id="退">退出</button>
@@ -176,7 +178,7 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
     <div class="grid">
       <div class="card">
         <h2>运行状态</h2>
-        <p class="desc">Xray 只连本机 SOCKS。改池不用重载面板。</p>
+        <p class="desc">开着时 Xray 把 dola 指到本机 SOCKS；关掉则恢复 X-UI 原分流。</p>
         <div id="概览左"></div>
       </div>
       <div class="card">
@@ -301,6 +303,9 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
         </label>
         <label class="f">墙检间隔分钟 <input name="wall_minutes" type="number" min="5" max="1440"></label>
         <label class="f">墙检端口 <input name="wall_port" type="number" min="0" max="65535" placeholder="0=自动认 Xray"></label>
+        <label class="f">桥分流
+          <select name="proxy_on"><option value="0">关（恢复 X-UI）</option><option value="1">开</option></select>
+        </label>
         <label class="f wide">别家提取接口 fetch_url<span id="盖"></span>
           <input name="fetch_url" placeholder="用闪臣 / IPIPGO 就不用填">
         </label>
@@ -578,6 +583,13 @@ function 填(d){
   else if(墙态==="通"){ 片.className="chip ok"; 文.textContent="国内可连"; 片.classList.remove("hide"); }
   else if(墙态==="本机未听"){ 片.className="chip bad"; 文.textContent="端口未听"; 片.classList.remove("hide"); }
   else { 片.className="chip hide"; }
+  const 开着=!!d.proxy_on;
+  const 代片=document.getElementById("代理片");
+  const 代钮=document.getElementById("代理钮");
+  代片.className=开着?"chip ok":"chip bad";
+  代片.textContent=开着?"代理开着":"代理已关";
+  代钮.className=开着?"btn bad":"btn ok";
+  代钮.textContent=开着?"关闭代理":"开启代理";
 
   document.getElementById("概览左").innerHTML=
     行("SOCKS", esc(d.listen))+
@@ -588,6 +600,8 @@ function 填(d){
     行("每批", (d.sc_count||100)+" 条")+
     行("自动换新", esc(d.换说||"关"))+
     行("自动更新", d.auto_update?("每 "+(d.update_minutes||5)+" 分钟"):"关")+
+    行("桥分流", 开着?"开着":"已关，X-UI 原设置")+
+    行("分流", esc(d.分流说||"—"))+
     行("墙检", esc(d.墙说||(d.wall_check?"待查":"关")))+
     行("今日消耗", esc(d.今日合计文||"0 B"))+
     行("累计流量", "上 "+esc(d.总上行文||"0 B")+" / 下 "+esc(d.总下行文||"0 B"));
@@ -620,6 +634,7 @@ function 填(d){
     塞(f,"wall_check",String(d.wall_check?1:0));
     塞(f,"wall_minutes",d.wall_minutes||10);
     塞(f,"wall_port",d.wall_port||0);
+    塞(f,"proxy_on",String(d.proxy_on?1:0));
     塞(f,"fetch_scheme",d.fetch_scheme||"");
     塞(f,"sc_count",d.sc_count||100);
     塞(f,"sc_time",String(d.sc_time==null?0:d.sc_time));
@@ -701,7 +716,7 @@ document.getElementById("设").onsubmit=e=>{
       sc_white:+f.sc_white.value,
       auto_update:+f.auto_update.value, update_minutes:+f.update_minutes.value,
       wall_check:+f.wall_check.value, wall_minutes:+f.wall_minutes.value,
-      wall_port:+f.wall_port.value
+      wall_port:+f.wall_port.value, proxy_on:+f.proxy_on.value
     });
     脏["设"]=0;
     return "设置已保存";
@@ -718,6 +733,14 @@ document.getElementById("更新").onclick=()=>忙("更新","检查中…",async(
   (await api("/api/update",{})).msg);
 document.getElementById("查墙").onclick=()=>忙("查墙","国内回探中…",async()=>
   (await api("/api/wall",{})).msg);
+document.getElementById("代理钮").onclick=()=>{
+  const 开=最新 && 最新.proxy_on ? 0 : 1;
+  const 问=开?"开启后会把 dola 重新指到本机桥，并可能重启 X-UI。确定？":
+    "关闭后恢复 X-UI 原分流，dola 不再走代理池。确定？";
+  if(!confirm(问)) return;
+  return 忙("代理钮",开?"正在写回桥分流…":"正在恢复 X-UI 原设置…",async()=>
+    (await api("/api/proxy",{on:开})).msg);
+};
 document.getElementById("补").onclick=()=>忙("补","补池中…",async()=>
   (await api("/api/fill",{})).msg);
 document.getElementById("换").onclick=()=>忙("换","换新中…",async()=>

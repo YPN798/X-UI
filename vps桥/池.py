@@ -123,7 +123,7 @@ def 人读(n: int) -> str:
     "go_pass": "",
     "go_host": "proxy.ipipgo.com",
     "go_port": 1080,
-    "defaults_ver": 16,
+    "defaults_ver": 17,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -133,12 +133,14 @@ def 人读(n: int) -> str:
     "wall_check": 1,
     "wall_minutes": 10,
     "wall_port": 0,
+    # 0=关掉桥分流，恢复 X-UI 原设置；1=dola 走 127.0.0.1:41000
+    "proxy_on": 0,
     "随机国库": ["JP", "KR", "SG", "TH", "VN", "MY", "PH", "ID", "BR"],
     "proxies": [],
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-18.1"
+版本 = "2026-09-18.2"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -256,6 +258,7 @@ class 池:
         self.墙说 = ""
         self.墙口 = 0
         self._墙检中 = False
+        self.分流说 = ""
         self.设: dict[str, Any] = dict(默认)
         self.条们: list[条] = []
         self.闪臣态: dict[str, Any] = {
@@ -348,6 +351,8 @@ class 池:
                 self.设["wall_check"] = 默认["wall_check"]
                 self.设["wall_minutes"] = 默认["wall_minutes"]
                 self.设["wall_port"] = 默认["wall_port"]
+            if 旧版 < 17:
+                self.设["proxy_on"] = 0
             self.设["defaults_ver"] = 默认["defaults_ver"]
         self.条们 = []
         for 一 in 原.get("proxies") or []:
@@ -417,6 +422,7 @@ class 池:
             "wall_check": int(self.设.get("wall_check") or 0),
             "wall_minutes": int(self.设.get("wall_minutes") or 10),
             "wall_port": int(self.设.get("wall_port") or 0),
+            "proxy_on": int(self.设.get("proxy_on") or 0),
             "随机国库": self.国库(),
             # 来源必须一起存，否则重启后拉取来的全变成手加，换新再也换不掉它们
             "proxies": [{"串": 一.串(), "来源": 一.来源} for 一 in self.条们 if not 一.退役],
@@ -570,7 +576,7 @@ class 池:
             for k in ("pool_size", "fail_n", "check_interval", "check_conc",
                       "connect_timeout", "auto_rotate", "sc_count", "sc_time", "sc_white",
                       "go_port", "auto_update", "update_minutes",
-                      "wall_check", "wall_minutes", "wall_port"):
+                      "wall_check", "wall_minutes", "wall_port", "proxy_on"):
                 if k in 补 and 补[k] not in (None, ""):
                     self.设[k] = int(补[k])
             # 安全码 / IPIPGO 密码只写：页面永远不回显，留空表示保持原样
@@ -602,6 +608,9 @@ class 池:
         except (TypeError, ValueError):
             return int(默认["update_minutes"])
 
+    def 代理开(self) -> bool:
+        return bool(int(self.设.get("proxy_on") or 0))
+
     def 有效换期(self) -> int:
         """真正采用的换新间隔（秒）。尊重 IP 时长：长效 IP 不在到期前被换掉。
 
@@ -610,6 +619,8 @@ class 池:
         用户把「自动换新秒」设成 30，却选了 1-6 小时，等于每 30 秒就把
         还没到期的 IP 扔了。这里给一个按档位的下限，取两者较大值。
         """
+        if not self.代理开():
+            return 0
         设换 = max(0, int(self.设.get("auto_rotate") or 0))
         模 = int(self.设.get("sc_time") or 0)
         if 设换 <= 0:
@@ -618,6 +629,8 @@ class 池:
         return max(设换, 下限)
 
     def 换说(self) -> str:
+        if not self.代理开():
+            return "代理已关，X-UI 已恢复原设置"
         期 = self.有效换期()
         if 期 <= 0:
             return "关"
@@ -1782,6 +1795,8 @@ class 池:
             "wall_check": int(self.设.get("wall_check") or 0),
             "wall_minutes": int(self.设.get("wall_minutes") or 10),
             "wall_port": int(self.设.get("wall_port") or 0),
+            "proxy_on": int(self.设.get("proxy_on") or 0),
+            "分流说": self.分流说,
             "健康": len(self.健康们()),
             "总数": len(self.条们),
             "上行": sum(一.上行 for 一 in self.条们),

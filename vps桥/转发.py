@@ -359,13 +359,21 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
     上次换 = time.monotonic()
     上次验 = 0.0
     上次刷 = 0.0
-    if 池子.可自动白():
+    if 池子.可自动白() and 池子.代理开():
         try:
             _, 说 = await asyncio.to_thread(池子.加白名单)
             日志.info("开机自动加白名单：%s", 说)
         except Exception as 错:
             日志.warning("开机加白名单失败：%s", 错)
     while not 停.is_set():
+        if not 池子.代理开():
+            池子.上轮验活 = f"{time.strftime('%H:%M:%S')} 代理已关，不验活不换新"
+            池子.换基 = 0.0
+            try:
+                await asyncio.wait_for(停.wait(), timeout=30)
+                return
+            except asyncio.TimeoutError:
+                continue
         await 池子.收旧()
         间隔 = max(8, int(池子.设.get("check_interval") or 120))
         秒 = float(池子.设.get("connect_timeout") or 8)

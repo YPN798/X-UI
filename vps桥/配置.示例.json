@@ -34,7 +34,7 @@
   "go_pass": "",
   "go_host": "proxy.ipipgo.com",
   "go_port": 1080,
-  "defaults_ver": 16,
+  "defaults_ver": 17,
   "web_pass": "YPN940815...",
   "auto_update": 1,
   "update_minutes": 5,
@@ -42,6 +42,7 @@
   "wall_check": 1,
   "wall_minutes": 10,
   "wall_port": 0,
+  "proxy_on": 0,
   "随机国库": ["JP", "KR", "SG", "TH", "VN", "MY", "PH", "ID", "BR"],
   "proxies": []
 }
