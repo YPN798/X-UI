@@ -109,6 +109,29 @@ pre.api{
 code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d141c;
   padding:1px 6px; border-radius:4px; border:1px solid var(--line)}
 .muted{color:var(--muted)}
+.pool-sec{margin:0 0 18px; border:1px solid var(--line); border-radius:12px; overflow:hidden}
+.pool-sec h3{
+  margin:0; padding:10px 14px; font-size:13px; font-weight:700; letter-spacing:.02em;
+  display:flex; align-items:baseline; gap:10px; background:#0f1620;
+}
+.pool-sec h3 b{font-size:16px}
+.pool-sec .sub{color:var(--muted); font-weight:500; font-size:12px}
+.pool-sec.刚提取{border-color:#1d6b6b}
+.pool-sec.刚提取 h3{color:#5eead4; background:#0d2424}
+.pool-sec.本批{border-color:#1d4d7a}
+.pool-sec.本批 h3{color:#7dd3fc; background:#0d1c2a}
+.pool-sec.上批{border-color:#6b5420}
+.pool-sec.上批 h3{color:#fbbf24; background:#241c0c}
+.pool-sec.手加{border-color:var(--line)}
+.pool-sec.退役{border-color:#3a3a3a; opacity:.85}
+.pool-sec.退役 h3{color:var(--muted)}
+tr.档-刚提取 td:first-child{box-shadow:inset 3px 0 0 #2dd4bf}
+tr.档-本批 td:first-child{box-shadow:inset 3px 0 0 #38bdf8}
+tr.档-上批 td:first-child{box-shadow:inset 3px 0 0 #f59e0b}
+tr.档-退役{opacity:.55}
+.age{font-variant-numeric:tabular-nums; font-weight:650}
+.age.old{color:#fbbf24}
+.age.fresh{color:#5eead4}
 .tags{display:flex; flex-wrap:wrap; gap:8px; margin:4px 0 12px}
 .tag{display:inline-flex; align-items:center; gap:6px; padding:5px 8px 5px 10px;
   border:1px solid var(--line); border-radius:999px; background:#0d141c; font-size:13px}
@@ -200,24 +223,23 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
 
   <section id="页-代理池" class="hide">
     <div class="card">
+      <h2>代理池</h2>
+      <p class="desc">青=刚提取（45 秒内）· 蓝=本批新代理 · 黄=上批仍在用（看已用多久）。轻质换新：接口给几条入几条，不检测、不凑 50。</p>
       <div class="rowbar">
         <input id="池滤" placeholder="过滤地址 / 出口 / 来源">
-        <button class="btn" id="补">立刻补池</button>
-        <button class="btn" id="换">立即换新</button>
+        <button class="btn" id="补">再提一轮</button>
+        <button class="btn pri" id="换">轻质换新</button>
         <button class="btn bad" id="清空">清空池</button>
       </div>
-      <table>
-        <thead><tr><th>地址</th><th>状态</th><th>出口</th><th>连接</th><th>上行</th><th>下行</th><th>来源</th><th>说明</th><th></th></tr></thead>
-        <tbody id="表"></tbody>
-      </table>
-      <div class="empty hide" id="池空">池是空的。先到「提取源」开跑，或在设置里手动加入。</div>
+      <div id="池组"></div>
+      <div class="empty hide" id="池空">池是空的。先到「提取源」开跑。</div>
     </div>
   </section>
 
   <section id="页-提取源" class="hide">
     <div class="card">
       <h2>提取源</h2>
-      <p class="desc">用哪家默认自动：各源各提，一家出错不挡其他。1024 写死可提，闪臣 / IPIPGO 有凭证才跟。白名单已手加，加白不挡提取。</p>
+      <p class="desc">自动：各源问一次，给几条入几条。一家出错不挡其他。1024 写死可提。白名单已手加，加白不挡提取。</p>
       <form id="闪" class="form">
         <label class="f">用哪家
           <select name="provider">
@@ -263,7 +285,7 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
       <h2>提取与地区</h2>
       <p class="desc">国家留空则每批从下面「随机地区」里抽一个。钉死某国则不随机。</p>
       <form id="设" class="form">
-        <label class="f">每次提几条 <input name="sc_count" type="number" min="1" max="500"></label>
+        <label class="f">闪臣单次条数 <input name="sc_count" type="number" min="1" max="500" title="轻质换新不凑这个数"></label>
         <label class="f">IP 保持多久
           <select name="sc_time">
             <option value="0">每次更换 IP（5-30 分钟）</option>
@@ -391,12 +413,30 @@ async function api(path, body){
   if(body){ o.headers["Content-Type"]="application/json"; o.body=JSON.stringify(body); }
   let r;
   try{ r = await fetch(path, o); }
-  catch(e){ throw new Error("连不上桥："+(e.message||e)); }
+  catch(e){
+    const m=String(e && e.message || e);
+    if(/abort|timeout|超时/i.test(m)) throw new Error("桥超时");
+    throw new Error("连不上桥："+m);
+  }
   if(r.status===401){ 开门(true); throw new Error("要密码"); }
   const t = await r.text();
   let j; try{ j=JSON.parse(t); }catch(e){ throw new Error(t||r.status); }
   if(!r.ok || j.ok===false) throw new Error(j.err||t);
   return j;
+}
+async function 等到提取完(秒){
+  const 止=Date.now()+Math.max(10,秒||180)*1000;
+  let 末="还在后台提取";
+  while(Date.now()<止){
+    await new Promise(r=>setTimeout(r,1500));
+    try{
+      const j=await api("/api/status");
+      填(j);
+      末=String(j.上次补||末);
+      if(!j.换着 && !/^正在/.test(末)) return 末;
+    }catch(e){}
+  }
+  return 末+"（后台还在跑，通的会陆续进池）";
 }
 function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function 塞(f,名,值){
@@ -538,32 +578,56 @@ function 填日(d){
   if(空) 空.classList.toggle("hide", 列.length>0);
 }
 function 填表(d){
-  const tb=document.getElementById("表");
+  const 盒=document.getElementById("池组");
   const 空=document.getElementById("池空");
   const q=(document.getElementById("池滤").value||"").trim().toLowerCase();
-  tb.innerHTML="";
   const 列=d.池||d.proxies||[];
-  let n=0;
+  const 序=["刚提取","本批","上批","手加","退役"];
+  const 题={刚提取:"刚提取",本批:"本批新代理",上批:"上批仍在用",手加:"手加",退役:"交替下线"};
+  const 注={刚提取:"这一轮刚进池，还不到 45 秒",本批:"本轮换新加入的",上批:"上一轮留下的老代理，右侧是已用多久",手加:"不是提取来的",退役:"不再接新连接，回包走完就下"};
+  const 组={};
+  序.forEach(k=>组[k]=[]);
   列.forEach(p=>{
-    const 文=[p.地址,p.出口,p.来源,p.上次错误,p.上次切换].join(" ").toLowerCase();
+    const 文=[p.地址,p.出口,p.来源,p.档,p.已用文].join(" ").toLowerCase();
     if(q && !文.includes(q)) return;
-    n++;
-    const tr=document.createElement("tr");
-    const 态=p.退役?"<span class='pill warn'>交替</span>":p.启用?(p.健康?"<span class='pill ok'>健康</span>":"<span class='pill bad'>摘除</span>"):"<span class='pill mute'>停</span>";
-    const 出=String(p.出口||"");
-    const 出格=出?(出.startsWith("?")?"<span class='pill mute'>探不到</span>":esc(出)):"<span class='pill mute'>待探</span>";
-    tr.innerHTML="<td class=mono>"+esc(p.地址)+" <span class=pill>"+esc(p.方案)+"</span></td><td>"+态+
-      "</td><td>"+出格+"</td><td>"+(p.连接||0)+"</td><td>"+esc(p.上行文||"0 B")+
-      "</td><td>"+esc(p.下行文||"0 B")+"</td><td>"+esc(p.来源)+"</td><td></td><td></td>";
-    tr.cells[7].textContent=p.上次错误||p.上次切换||"";
-    const b=document.createElement("button");
-    b.className="btn bad"; b.textContent="删除";
-    b.onclick=async()=>{ await api("/api/del",{id:p.号||p.id}); 刷(); };
-    tr.cells[8].appendChild(b);
-    tb.appendChild(tr);
+    const 档=序.includes(p.档)?p.档:(p.退役?"退役":"本批");
+    组[档].push(p);
+  });
+  盒.innerHTML="";
+  let 见=0;
+  序.forEach(档=>{
+    const 些=组[档];
+    if(!些.length) return;
+    见+=些.length;
+    const sec=document.createElement("div");
+    sec.className="pool-sec "+档;
+    sec.innerHTML="<h3>"+esc(题[档])+" <b>"+些.length+"</b><span class=sub>"+esc(注[档])+"</span></h3>";
+    const tb=document.createElement("table");
+    tb.innerHTML="<thead><tr><th>地址</th><th>档</th><th>已用</th><th>出口</th><th>连接</th><th>上行</th><th>下行</th><th>来源</th><th></th></tr></thead>";
+    const body=document.createElement("tbody");
+    些.forEach(p=>{
+      const tr=document.createElement("tr");
+      tr.className="档-"+档;
+      const 出=String(p.出口||"");
+      const 出格=出?(出.startsWith("?")?"<span class='pill mute'>探不到</span>":esc(出)):"<span class='pill mute'>待探</span>";
+      const 龄色=档==="上批"?"old":(档==="刚提取"?"fresh":"");
+      const 档珠=档==="刚提取"?"<span class='pill ok'>刚提取</span>":档==="本批"?"<span class='pill'>本批</span>":档==="上批"?"<span class='pill warn'>上批</span>":档==="退役"?"<span class='pill mute'>交替</span>":"<span class='pill mute'>手加</span>";
+      tr.innerHTML="<td class=mono>"+esc(p.地址)+" <span class=pill>"+esc(p.方案)+"</span></td><td>"+档珠+
+        "</td><td class='age "+龄色+"'>"+esc(p.已用文||"—")+"</td><td>"+出格+
+        "</td><td>"+(p.连接||0)+"</td><td>"+esc(p.上行文||"0 B")+
+        "</td><td>"+esc(p.下行文||"0 B")+"</td><td>"+esc(p.来源)+"</td><td></td>";
+      const b=document.createElement("button");
+      b.className="btn bad"; b.textContent="删除";
+      b.onclick=async()=>{ await api("/api/del",{id:p.号||p.id}); 刷(); };
+      tr.cells[8].appendChild(b);
+      body.appendChild(tr);
+    });
+    tb.appendChild(body);
+    sec.appendChild(tb);
+    盒.appendChild(sec);
   });
   空.classList.toggle("hide", 列.length>0);
-  if(列.length && !n) 空.classList.add("hide");
+  if(列.length && !见) 空.classList.add("hide");
 }
 function 填(d){
   最新=d;
@@ -575,7 +639,8 @@ function 填(d){
   document.getElementById("活点").className="dot";
   document.getElementById("活文").textContent="在线";
   document.getElementById("k健康").textContent=(d.健康||0)+"/"+(d.总数||0);
-  document.getElementById("k健康说").textContent=(s.供应商||d.供应商||"无源")+" · 目标 "+(d.pool_size||0);
+  const 档=d.档计||{};
+  document.getElementById("k健康说").textContent="刚提取 "+(档.刚提取||0)+" · 本批 "+(档.本批||0)+" · 上批 "+(档.上批||0);
   document.getElementById("k流量").textContent=d.今日合计文||"0 B";
   document.getElementById("k流量说").textContent="上 "+(d.今日上行文||"0 B")+" / 下 "+(d.今日下行文||"0 B")+" · 累计 "+(d.累计合计文||d.总下行文||"0 B");
   document.getElementById("k余额").textContent=s.余额|| (s.开?"查询中":"未启用");
@@ -609,7 +674,7 @@ function 填(d){
     行("验活", esc((d.check_host||"www.dola.com")+":"+(d.check_port||443)))+
     行("供应商", esc(s.供应商||d.供应商||"无"))+
     行("提取地区", esc(s.地区||"随机"))+
-    行("每批", (d.sc_count||50)+" 条")+
+    行("换新", "轻质 · 给几条入几条")+
     行("自动换新", esc(d.换说||"关"))+
     行("自动更新", d.auto_update?("每 "+(d.update_minutes||5)+" 分钟"):"关")+
     行("桥分流", 开着?"开着":"已关，X-UI 原设置")+
@@ -715,7 +780,8 @@ document.getElementById("闪").onsubmit=e=>{
       p24_pass:f.p24_pass.value, p24_url:f.p24_url.value.trim()
     });
     f.sc_code.value=""; f.go_pass.value=""; f.p24_token.value=""; f.p24_pass.value=""; 脏["闪"]=0;
-    return (j.步||[]).join("\n");
+    const 尾=await 等到提取完(180);
+    return ((j.步||[]).join("\n")+"\n"+尾).trim();
   });
 };
 document.getElementById("设").onsubmit=e=>{
@@ -759,10 +825,14 @@ document.getElementById("代理钮").onclick=()=>{
   return 忙("代理钮",开?"正在写回桥分流…":"正在恢复 X-UI 原设置…",async()=>
     (await api("/api/proxy",{on:开})).msg);
 };
-document.getElementById("补").onclick=()=>忙("补","补池中…",async()=>
-  (await api("/api/fill",{})).msg);
-document.getElementById("换").onclick=()=>忙("换","换新中…",async()=>
-  (await api("/api/rotate",{})).msg);
+document.getElementById("补").onclick=()=>忙("补","补池中…",async()=>{
+  const j=await api("/api/fill",{});
+  return j.进行中 ? await 等到提取完(180) : (j.msg||"好了");
+});
+document.getElementById("换").onclick=()=>忙("换","轻质换新中…",async()=>{
+  const j=await api("/api/rotate",{});
+  return j.进行中 ? await 等到提取完(180) : (j.msg||"好了");
+});
 document.getElementById("加").onsubmit=e=>{
   e.preventDefault();
   const f=e.target;

@@ -60,7 +60,7 @@ _饼干名 = "xui_bridge"
     {"method": "POST", "path": "/api/set", "desc": "改设置，只改传入的字段。返回最新 config",
      "body": {"sc_cntry": "JP", "pool_size": 50, "auto_rotate": 300}},
     {"method": "POST", "path": "/api/fill", "desc": "按目标条数补池"},
-    {"method": "POST", "path": "/api/rotate", "desc": "各源各提 50，先验活再入池。自动时一家出错不挡其他，只换成功那家的旧线路。拉取最多活 5 分钟"},
+    {"method": "POST", "path": "/api/rotate", "desc": "轻质换新：各源问一次，给几条入几条，不检测、不凑 50。旧代理留下并显示已用多久"},
     {"method": "POST", "path": "/api/add", "desc": "手动加代理。串=多行文本，或 proxies=数组",
      "body": {"proxies": ["socks5://user:pass@1.2.3.4:1080"]}},
     {"method": "POST", "path": "/api/del", "desc": "按号删一条", "body": {"id": "…"}},
@@ -103,7 +103,7 @@ def 接口目录() -> dict:
         "接口": [dict(一) for 一 in 接口表],
         "字段": {
             "health": ["版本", "listen", "web", "健康", "总数", "供应商", "这批地区",
-                       "上次补", "上次换新", "墙态", "墙说", "墙口", "proxy_on"],
+                       "上次补", "上次换新", "换着", "墙态", "墙说", "墙口", "proxy_on"],
             "池条目": ["号", "地址", "方案", "来源", "退役", "启用", "健康", "失败", "连接",
                       "上行", "下行", "上行文", "下行文", "出口", "上次错误", "上次切换"],
             "日表条目": ["日", "上行", "下行", "合计", "上行文", "下行文", "合计文"],
@@ -135,6 +135,7 @@ def 健康视图(池子: 池) -> dict:
         "这批地区": 池子.这批地区,
         "上次补": 池子.上次补,
         "上次换新": 池子.上次换新,
+        "换着": 池子.换着(),
         "墙态": 池子.墙态,
         "墙说": 池子.墙说,
         "墙口": 池子.墙口,
@@ -616,11 +617,11 @@ async def 处理管理(读, 写, 池子: 池) -> None:
                 await 池子.改设({"web_pass": 新})
                 _json(写, 200, {"ok": True, "msg": "密码已改，下次请求用新密码"}, _置饼(新))
         elif 法 == "POST" and 路 == "/api/fill":
-            说 = await 池子.补齐()
-            _json(写, 200, {"ok": True, "msg": 说, "health": 健康视图(池子)})
+            说 = await 池子.开始补齐()
+            _json(写, 200, {"ok": True, "msg": 说, "进行中": 池子.换着(), "health": 健康视图(池子)})
         elif 法 == "POST" and 路 == "/api/rotate":
-            说 = await 池子.换新()
-            _json(写, 200, {"ok": True, "msg": 说, "health": 健康视图(池子)})
+            说 = await 池子.开始换新()
+            _json(写, 200, {"ok": True, "msg": 说, "进行中": 池子.换着(), "health": 健康视图(池子)})
         elif 法 == "POST" and 路 == "/api/update":
             from 更新 import 更新一次
             说 = await 更新一次(池子)
@@ -664,7 +665,8 @@ async def 处理管理(读, 写, 池子: 池) -> None:
                 str(数据.get("p24_pass") or "").strip(),
                 str(数据.get("p24_url") or "").strip(),
             )
-            _json(写, 200, {"ok": True, "步": 步, "msg": "\n".join(步), "config": 池子.配置快照()})
+            _json(写, 200, {"ok": True, "步": 步, "msg": "\n".join(步),
+                            "进行中": 池子.换着(), "config": 池子.配置快照()})
         elif 法 == "POST" and 路 == "/api/sc/white":
             好, 说 = await asyncio.to_thread(
                 池子.加白名单, str(数据.get("ip") or ""),

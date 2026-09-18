@@ -77,6 +77,15 @@ def _白条(一: Any) -> dict[str, str]:
     }
 
 
+def 人读时(秒: int) -> str:
+    秒 = max(0, int(秒 or 0))
+    if 秒 < 60:
+        return f"{秒} 秒"
+    if 秒 < 3600:
+        return f"{秒 // 60} 分 {秒 % 60} 秒"
+    return f"{秒 // 3600} 时 {(秒 % 3600) // 60} 分"
+
+
 def 人读(n: int) -> str:
     n = max(0, int(n or 0))
     if n < 1024:
@@ -153,7 +162,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-18.6"
+版本 = "2026-09-18.10"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -264,6 +273,8 @@ class 条:
         self.退役于 = 0.0
         # 进工作池的时刻。拉取线路按这个算 5 分钟寿限；0=磁盘里捞上来的，立刻算过期
         self.入池于 = float(信.get("入池于") or 0)
+        self.入时 = float(信.get("入时") or 0)
+        self.批次 = int(信.get("批次") or 0)
 
     def 键(self) -> str:
         return f"{self.方案}|{self.主机}|{self.端口}|{self.用户}"
@@ -277,7 +288,22 @@ class 条:
             "用户": self.用户, "密码": self.密码,
         })
 
-    def 快照(self) -> dict[str, Any]:
+    def 档(self, 换代: int = 0, 现在: float | None = None) -> str:
+        if self.退役:
+            return "退役"
+        if not (self.来源 == "拉取" or self.来源.startswith("拉取/")):
+            return "手加"
+        now = time.time() if 现在 is None else 现在
+        已用 = now - (self.入时 or now)
+        if int(self.批次 or 0) == int(换代 or 0) and 已用 <= 45:
+            return "刚提取"
+        if int(self.批次 or 0) == int(换代 or 0):
+            return "本批"
+        return "上批"
+
+    def 快照(self, 换代: int = 0) -> dict[str, Any]:
+        now = time.time()
+        已用 = max(0, int(now - (self.入时 or now))) if self.入时 else 0
         return {
             "号": self.号,
             "地址": self.脱敏(),
@@ -295,6 +321,11 @@ class 条:
             "上次错误": self.上次错误,
             "上次切换": self.上次切换,
             "出口": self.出口,
+            "批次": int(self.批次 or 0),
+            "入时": self.入时,
+            "已用": 已用,
+            "已用文": 人读时(已用) if self.入时 else "—",
+            "档": self.档(换代, now),
         }
 
     def 显来源(self) -> str:
@@ -339,6 +370,8 @@ class 池:
         self.起算 = time.strftime("%Y-%m-%d %H:%M")
         self._流量落盘 = 0.0
         self._补中 = False
+        self._换中 = False
+        self.换代 = 0
         self.读盘()
 
     def 读盘(self) -> None:
@@ -551,6 +584,18 @@ class 池:
             一.上行 = int(命.get("上行") or 0)
             一.下行 = int(命.get("下行") or 0)
             一.出口 = str(命.get("出口") or "")
+            try:
+                一.入时 = float(命.get("入时") or 0)
+            except (TypeError, ValueError):
+                一.入时 = 0
+            try:
+                一.批次 = int(命.get("批次") or 0)
+            except (TypeError, ValueError):
+                一.批次 = 0
+        try:
+            self.换代 = int(文.get("换代") or 0)
+        except (TypeError, ValueError):
+            self.换代 = 0
         self.起算 = str(文.get("起算") or self.起算)
         self.上次补 = str(文.get("上次补") or "")
         self.上次换新 = str(文.get("上次换新") or "")
@@ -586,6 +631,7 @@ class 池:
             "上次换新": self.上次换新,
             "这批地区": self.这批地区,
             "上次源": self.上次源,
+            "换代": int(self.换代 or 0),
             "上轮验活": self.上轮验活,
             "墙态": self.墙态,
             "墙说": self.墙说,
@@ -597,7 +643,7 @@ class 池:
             "总下行": self.总下行,
             "日流量": self._日盘(),
             # 键只落盘不上接口，页面看到的还是脱敏地址
-            "池": [{**一.快照(), "键": 一.键()} for 一 in self.条们],
+            "池": [{**一.快照(self.换代), "键": 一.键()} for 一 in self.条们],
         }
         try:
             self.状态径().write_text(json.dumps(出, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -629,6 +675,7 @@ class 池:
         键 = f"{规范协议(信.get('方案') or 'socks5')}|{主}|{口}|{信.get('用户') or ''}"
         now = time.monotonic()
         起 = now if 入时 is None else float(入时)
+        墙 = time.time()
         for 已 in self.条们:
             if 已.键() == 键:
                 已.退役 = False
@@ -636,9 +683,15 @@ class 池:
                 已.来源 = 来源
                 已.启用 = True
                 已.入池于 = 起
+                已.入时 = 墙
+                if 来源 == "拉取" or 来源.startswith("拉取/"):
+                    已.批次 = int(self.换代 or 0)
                 return 已
         一 = 条(信, 来源=来源)
         一.入池于 = 起
+        一.入时 = 墙
+        if 来源 == "拉取" or 来源.startswith("拉取/"):
+            一.批次 = int(self.换代 or 0)
         self.条们.append(一)
         if 落盘:
             self.落盘()
@@ -759,6 +812,16 @@ class 池:
         return [一 for 一 in self.条们
                 if 一.启用 and 一.健康 and not 一.退役 and not self._过期了(一, now)]
 
+    def 可接们(self) -> list[条]:
+        """换线时优先走新的；没有新的就用旧的顶上，绝不回空池。"""
+        新 = self.健康们()
+        if 新:
+            return 新
+        旧 = [一 for 一 in self.条们 if 一.启用 and not 一.退役]
+        if 旧:
+            return 旧
+        return [一 for 一 in self.条们 if 一.启用]
+
     def _提取的(self, 一: 条) -> bool:
         return (一.来源 == "拉取" or 一.来源.startswith("拉取/")
                 or 闪臣主机 in 一.主机 or ipipgo主机 in 一.主机
@@ -784,27 +847,39 @@ class 池:
             return False
         now = time.monotonic() if now is None else now
         起 = float(一.入池于 or 0)
-        return 起 <= 0 or (now - 起) >= self.池寿()
+        # 磁盘捞上来的先接着用，一重启就当过期会空池、把现有连接饿死
+        if 起 <= 0:
+            return False
+        return (now - 起) >= self.池寿()
 
     def _标过期(self) -> int:
-        """到点的拉取线路立刻退役，新连接不再走它们。返回新标退役的条数。"""
+        """寿限到了才退役。有连接的、以及退役后会空池的，先留着，避免换线掐连接。"""
         now = time.monotonic()
+        新活 = [一 for 一 in self.条们
+               if 一.启用 and 一.健康 and not 一.退役 and not self._过期了(一, now)]
         n = 0
         旧号: set[str] = set()
         for 一 in self.条们:
             if 一.退役 or not self._提取的(一):
                 continue
-            if self._过期了(一, now):
-                一.退役 = True
-                一.退役于 = now
-                旧号.add(一.号)
-                n += 1
+            if 一.连接 > 0:
+                continue
+            if not self._过期了(一, now):
+                continue
+            其余 = [x for x in 新活 if x.号 != 一.号]
+            if not 其余:
+                continue
+            一.退役 = True
+            一.退役于 = now
+            旧号.add(一.号)
+            新活 = 其余
+            n += 1
         if 旧号:
             self.粘 = {k: v for k, v in self.粘.items() if v not in 旧号}
         return n
 
     def _收旧(self, 宽限: float = 交叠秒) -> int:
-        """只拿掉超过交叠时限的退役线路。空闲也留着，避免换新当下把旧 IP 从面板抹掉。不关套接字。"""
+        """只拿掉超过交叠且已经没有连接的退役线路。有连接的绝不删，避免掐套接字。"""
         now = time.monotonic()
         留: list[条] = []
         丢 = 0
@@ -812,7 +887,8 @@ class 池:
             if not 一.退役:
                 留.append(一)
                 continue
-            到期 = 一.退役于 > 0 and (now - 一.退役于) >= 宽限
+            到期 = (一.退役于 > 0 and (now - 一.退役于) >= 宽限
+                   and 一.连接 <= 0)
             if 到期:
                 丢 += 1
                 continue
@@ -833,11 +909,7 @@ class 池:
     async def 选(self, 目标: str = "") -> 条 | None:
         async with self.锁:
             self._标过期()
-            候选 = self.健康们()
-            if not 候选:
-                now = time.monotonic()
-                候选 = [一 for 一 in self.条们
-                       if 一.启用 and not 一.退役 and not self._过期了(一, now)]
+            候选 = self.可接们()
             if not 候选:
                 return None
             粘住 = str(self.设.get("sticky") or "")
@@ -948,18 +1020,26 @@ class 池:
             一.上次错误 = (因 or "")[:200]
             阈 = max(1, int(self.设.get("fail_n") or 3))
             if 一.失败 >= 阈:
-                一.健康 = False
-                一.上次切换 = time.strftime("%Y-%m-%d %H:%M:%S") + " " + 一.上次错误
-                self.粘 = {k: v for k, v in self.粘.items() if v != 一.号}
-                日志.warning("摘除 %s：%s", 一.脱敏(), 一.上次错误)
-                要补 = True
+                还有 = [x for x in self.条们
+                       if x.号 != 一.号 and x.启用 and x.健康 and not x.退役]
+                if not 还有:
+                    日志.warning("最后一条失败仍留着 %s：%s", 一.脱敏(), 一.上次错误)
+                else:
+                    一.健康 = False
+                    一.上次切换 = time.strftime("%Y-%m-%d %H:%M:%S") + " " + 一.上次错误
+                    self.粘 = {k: v for k, v in self.粘.items() if v != 一.号}
+                    日志.warning("摘除 %s：%s", 一.脱敏(), 一.上次错误)
+                    要补 = True
             self.写状态()
         if 要补:
             # 补池要跑一趟闪臣接口，不能让正在等着的那个请求陪着卡
             self._后台补齐()
 
+    def 换着(self) -> bool:
+        return bool(self._换中 or self._补中)
+
     def _后台补齐(self) -> None:
-        if self._补中:
+        if self._补中 or self._换中:
             return
 
         async def 跑() -> None:
@@ -967,14 +1047,49 @@ class 池:
                 await self.补齐()
             except Exception as 错:
                 日志.warning("后台补池失败：%s", 错)
+                self.上次补 = f"补池失败：{错}"
             finally:
                 self._补中 = False
 
         try:
             asyncio.get_running_loop().create_task(跑())
             self._补中 = True
+            if not str(self.上次补 or "").startswith("正在"):
+                self.上次补 = "正在补池并先验…"
         except RuntimeError:
             pass
+
+    async def 开始补齐(self) -> str:
+        if self.换着():
+            return self.上次补 or "上一次还在提取，等它结束"
+        self._后台补齐()
+        return self.上次补 or "正在补池并先验…"
+
+    async def 开始换新(self) -> str:
+        if self.换着():
+            return self.上次补 or "上一次还在提取，等它结束"
+        self._换中 = True
+        self.上次补 = "正在轻质换新…"
+
+        async def 跑() -> None:
+            try:
+                await self._换新本体()
+            except Exception as 错:
+                日志.warning("后台换新失败：%s", 错)
+                self.上次补 = f"换新失败：{错}"
+            finally:
+                self._换中 = False
+                try:
+                    self.写状态()
+                except Exception:
+                    pass
+
+        try:
+            asyncio.get_running_loop().create_task(跑())
+        except RuntimeError:
+            self._换中 = False
+            return await self._换新本体()
+        return self.上次补
 
     # ---- 闪臣动态流量接口 ------------------------------------------------
 
@@ -1591,8 +1706,8 @@ class 池:
         if p24_token or p24_user or p24_url:
             步.append("1024 凭证已更新")
         步.append("白名单已手加，开跑不改白名单、不挡提取")
-        步.append(await self.换新())
-        步.append(f"自动换新：{self.换说()}，各源各提 {self.提取条数()} 条，一家出错不挡其他，先验活再入池")
+        步.append(await self.开始换新())
+        步.append(f"自动换新：{self.换说()}。轻质：各源问一次，给几条入几条，不检测、不凑 50")
         return 步
 
     def _钉地区(self) -> tuple[str, str, str]:
@@ -1698,7 +1813,7 @@ class 池:
         try:
             if 址:
                 求 = Request(址, headers={"User-Agent": "xui-bridge"})
-                with urlopen(求, timeout=60) as r:
+                with urlopen(求, timeout=8) as r:
                     return r.read().decode("utf-8", "replace"), ""
             import subprocess
             出 = subprocess.check_output(令, shell=True, timeout=30, stderr=subprocess.STDOUT)
@@ -1961,7 +2076,7 @@ class 池:
         return 出
 
     def _抽1024(self, 国: str, 州: str, 市: str, 数: int) -> list[dict]:
-        return self._抽一次(p24提取址, "")
+        return self._抽一次(self.p24提取地址(国, 州, 市, 数), "")
 
     def _抽源(self, 源: str, 国: str, 州: str, 市: str, 数: int) -> list[dict]:
         try:
@@ -2050,7 +2165,7 @@ class 池:
         出: list[dict] = []
         见: set[str] = set()
         空 = 0
-        while len(出) < 数 and 空 < 8:
+        while len(出) < 数 and 空 < 2:
             try:
                 批 = self._抽源(源, 国, 州, 市, 数 - len(出))
             except Exception as 错:
@@ -2100,21 +2215,18 @@ class 池:
 
     def _抽一源(self, 源: str, 数: int, 换国: bool, 多试地: bool = True
               ) -> tuple[list[dict], str, str]:
-        """提一家。返回 (代理们, 地区, 失败说明)。出错不往外抛。"""
+        """轻质：每家只问一次，接口给几条算几条，不凑 50。"""
         try:
             地们 = [("Rand", "", "")] if 源 == "1024" else self._地区候选(换国)
-            if not 多试地:
-                地们 = 地们[:1]
-            最后 = ""
-            for 地 in 地们:
-                出 = self._抽满(源, *地, 数)
-                if 出:
-                    for 一 in 出:
-                        一["_源"] = 源
-                    return 出, 地区文(*地) or ("Rand" if 源 == "1024" else "随机"), ""
-                最后 = str(getattr(_抽态, "说", "") or self.上次补
-                           or f"{self.源名(源)} 提不到")
-            return [], "", 最后 or f"{self.源名(源)} 提不到"
+            地 = 地们[0] if 地们 else ("", "", "")
+            出 = self._抽源(源, *地, 1)
+            if 出:
+                for 一 in 出:
+                    一["_源"] = 源
+                return 出, 地区文(*地) or ("Rand" if 源 == "1024" else "随机"), ""
+            说 = str(getattr(_抽态, "说", "") or self.上次补
+                     or f"{self.源名(源)} 提不到")
+            return [], "", 说
         except Exception as 错:
             说 = f"{self.源名(源)} 提取出错：{错}"
             日志.warning("%s", 说)
@@ -2122,7 +2234,7 @@ class 池:
 
     def _拉取各源(self, 源们: list[str], 数: int, 换国: bool, 令: str) -> list[dict]:
         """自动：各源并行各提，一家挂了其他照进。"""
-        from concurrent.futures import ThreadPoolExecutor
+        from concurrent.futures import ThreadPoolExecutor, wait
 
         def 一家(源: str) -> tuple[str, list[dict], str, str]:
             try:
@@ -2131,9 +2243,15 @@ class 池:
             except Exception as 错:
                 return 源, [], "", f"{self.源名(源)} 提取出错：{错}"
 
+        列: list[tuple[str, list[dict], str, str]] = []
         if len(源们) > 1:
             with ThreadPoolExecutor(max_workers=len(源们)) as 工:
-                列 = list(工.map(一家, 源们))
+                未 = {工.submit(一家, 源): 源 for 源 in 源们}
+                好, 慢 = wait(未, timeout=20)
+                for f in 好:
+                    列.append(f.result())
+                for f in 慢:
+                    列.append((未[f], [], "", f"{self.源名(未[f])} 超时跳过"))
         else:
             列 = [一家(源们[0])]
 
@@ -2206,15 +2324,28 @@ class 池:
         批 = self.拉取一批()
         return 批[0] if 批 else None
 
-    async def 先验一批(self, 批: list[dict]) -> list[dict]:
-        """连 dola 握手，通的才准进工作池。"""
+    def _先验参(self) -> tuple[float, int, str, int]:
+        try:
+            秒 = float(self.设.get("connect_timeout") or 8)
+        except (TypeError, ValueError):
+            秒 = 8
+        # 先验封顶 4 秒，死线路别拖整批
+        秒 = max(2.0, min(4.0, 秒))
+        try:
+            并发 = int(self.设.get("check_conc") or 32)
+        except (TypeError, ValueError):
+            并发 = 32
+        并发 = max(16, min(64, 并发))
+        主 = str(self.设.get("check_host") or "www.dola.com").strip() or "www.dola.com"
+        口 = int(self.设.get("check_port") or 443)
+        return 秒, 并发, 主, 口
+
+    async def 先验并入(self, 批: list[dict], 入=None) -> list[dict]:
+        """先验；通的立刻回调入池，不用等整批验完。"""
         if not 批:
             return []
         from 转发 import 验一条
-        秒 = float(self.设.get("connect_timeout") or 8)
-        主 = str(self.设.get("check_host") or "www.dola.com").strip() or "www.dola.com"
-        口 = int(self.设.get("check_port") or 443)
-        并发 = max(1, min(64, int(self.设.get("check_conc") or 16)))
+        秒, 并发, 主, 口 = self._先验参()
         门 = asyncio.Semaphore(并发)
 
         async def 验(信: dict) -> dict | None:
@@ -2222,104 +2353,111 @@ class 池:
             async with 门:
                 try:
                     await 验一条(一, 秒, 主, 口)
-                    return 信
                 except Exception as 错:
                     日志.info("先验未过 %s：%s", 一.脱敏(), 错)
                     return None
+            if 入 is not None:
+                try:
+                    await 入(信)
+                except ValueError as 错:
+                    日志.warning("入池失败：%s", 错)
+                    return None
+            return 信
 
         果 = await asyncio.gather(*(验(一) for 一 in 批))
         return [一 for 一 in 果 if 一]
 
+    async def 先验一批(self, 批: list[dict]) -> list[dict]:
+        return await self.先验并入(批)
+
     async def 补齐(self) -> str:
-        目标 = max(0, int(self.设.get("pool_size") or 0))
-        async with self.锁:
-            self._标过期()
-            健康数 = len(self.健康们())
-        if 目标 <= 0 or 健康数 >= 目标:
-            return "池已够，不补"
+        if self._换中:
+            return self.上次补 or "正在换新，先不补"
         if not self.有拉取源():
-            说 = "健康不足但没配提取来源（闪臣 / IPIPGO / 1024 / fetch_url），保持现有池"
+            说 = "没配提取来源，保持现有池"
             self.上次补 = 说
             return 说
-        批 = await asyncio.to_thread(self.拉取一批, None, False)
-        好 = await self.先验一批(批)
-        成 = 0
-        for 信 in 好:
-            async with self.锁:
-                if len(self.健康们()) >= 目标:
-                    break
-            源 = str(信.pop("_源", "") or "")
-            try:
-                await self.加(信, 来源=self._拉取来源(源))
-                成 += 1
-            except ValueError as 错:
-                日志.warning("拉取入池失败：%s", 错)
-        说 = (f"先验 {len(批)} 过 {len(好)}，补入 {成} 条，"
-              f"健康 {len(self.健康们())}/{目标}")
-        self.上次补 = 说
-        日志.info("%s", 说)
-        return 说
+        return await self._轻质入(换代=False, 换国=False)
 
     async def 换新(self) -> str:
-        """先验活再入工作池。自动时只换掉成功那家的旧线路，失败源的旧代理留到寿限。手加不动。"""
-        批: list[dict] = []
-        if self.有拉取源():
-            批 = await asyncio.to_thread(self.拉取一批, None, True)
-        好 = await self.先验一批(批) if 批 else []
-        成家 = {str(信.get("_源") or "").strip() for 信 in 好}
-        成家.discard("")
-        自动 = str(self.设.get("provider") or "auto").strip() in ("", "auto")
+        if self._换中:
+            return self.上次补 or "正在换新"
+        self._换中 = True
+        try:
+            return await self._换新本体()
+        finally:
+            self._换中 = False
+
+    async def _轻质入(self, 换代: bool, 换国: bool) -> str:
+        """各源各问一次，给几条入几条，不检测、不凑 50。旧代理留下，只按寿限退役。"""
+        if 换代:
+            self.换代 = int(self.换代 or 0) + 1
+        源们 = self.源顺序() if self.有拉取源() else []
+        新成 = 0
+        提数 = 0
+        说们: list[str] = []
+        if 换代:
+            self.这批地区 = ""
         async with self.锁:
             self._标过期()
             self._收旧()
-            旧: list[条] = []
-            for 一 in self.条们:
-                if not self._提取的(一) or 一.退役:
-                    continue
-                家 = self._条源(一)
-                if 自动:
-                    if 家 in 成家 or (not 家 and 成家):
-                        旧.append(一)
-                elif 好:
-                    if not 家 or 家 in 成家 or 家 == self.当前源():
-                        旧.append(一)
-                else:
-                    旧.append(一)
-            新成 = 0
-            for 信 in 好:
-                源 = str(信.pop("_源", "") or "")
-                try:
-                    入 = self._塞(信, 来源=self._拉取来源(源), 落盘=False)
-                    if 入 in 旧:
-                        旧.remove(入)
-                    新成 += 1
-                except ValueError as 错:
-                    日志.warning("换新入池失败：%s", 错)
-            now = time.monotonic()
-            旧号 = {一.号 for 一 in 旧}
-            for 一 in 旧:
-                一.退役 = True
-                一.退役于 = now
-            self.粘 = {k: v for k, v in self.粘.items() if v not in 旧号}
+
+        async def 入信(信: dict) -> None:
+            nonlocal 新成
+            源 = str(信.pop("_源", "") or "")
+            async with self.锁:
+                入 = self._塞(信, 来源=self._拉取来源(源), 落盘=False)
+                入.健康 = True
+                入.失败 = 0
+                入.上次错误 = ""
+                新成 += 1
+                self.写状态()
+                self.上次补 = f"轻质换新已入 {新成} 条"
+
+        async def 跑源(源: str) -> None:
+            nonlocal 提数
+            try:
+                出, 地, 说 = await asyncio.to_thread(self._抽一源, 源, 1, 换国, False)
+            except Exception as 错:
+                说们.append(f"{self.源名(源)} 提取出错：{错}")
+                return
+            提数 += len(出)
+            if not 出:
+                说们.append(f"{self.源名(源)} 跳过：{(说 or '提不到')[:80]}")
+                return
+            if 地 and 换代:
+                self.这批地区 = (
+                    (self.这批地区 + "、") if self.这批地区 else ""
+                ) + f"{self.源名(源)} {地}"
+            for 信 in 出:
+                await 入信(信)
+            说们.append(f"{self.源名(源)} 入 {len(出)} 条")
+
+        if 源们:
+            await asyncio.gather(*(跑源(源) for 源 in 源们))
+        丢 = 0
+        async with self.锁:
             丢 = self._收旧()
             self.落盘()
-            数 = len([一 for 一 in self.条们 if self._提取的(一) and not 一.退役])
-            等走 = len([一 for 一 in self.条们 if 一.退役])
-        self.上次换新 = time.strftime("%Y-%m-%d %H:%M:%S")
+            工作 = len([一 for 一 in self.条们 if self._提取的(一) and not 一.退役])
+        if 换代:
+            self.上次换新 = time.strftime("%Y-%m-%d %H:%M:%S")
         地 = f"，{self.这批地区}" if self.这批地区 else ""
-        尾 = f"，{等走} 条交替中" if 等走 else (f"，到期旧线路已下 {丢} 条" if 丢 else "")
-        if 新成 <= 0:
-            说 = (f"换新无可用{地}，提 {len(批)} 先验 0，"
-                  f"{'失败源旧线路保留' if 自动 else '原拉取已下'}"
-                  f"{尾} {time.strftime('%H:%M:%S')}")
-            self.上次补 = 说
-            日志.warning("%s", 说)
-            return 说
-        说 = (f"已换新{地}，提 {len(批)} 先验过 {新成}，工作 {数} 条"
-              f"{尾} {time.strftime('%H:%M:%S')}")
+        细 = "；".join(说们)
+        说 = (f"{'轻质换新' if 换代 else '轻质补入'}{地}，提 {提数} 入 {新成}，工作 {工作} 条"
+              f"{'，到期已下 '+str(丢) if 丢 else ''} {time.strftime('%H:%M:%S')}")
+        if 细:
+            说 += "。" + 细
         self.上次补 = 说
-        日志.info("%s", 说)
+        (日志.info if 新成 else 日志.warning)("%s", 说)
         return 说
+
+    async def _换新本体(self) -> str:
+        if not self.有拉取源():
+            说 = "没配提取来源，池子保持现状"
+            self.上次补 = 说
+            return 说
+        return await self._轻质入(换代=True, 换国=True)
 
     def 总览(self) -> dict[str, Any]:
         return {
@@ -2358,6 +2496,7 @@ class 池:
             "p24_white": int(self.设.get("p24_white") or 0),
             "闪臣": self.闪臣快照(),
             "版本": 版本,
+            "换着": self.换着(),
             "上次补": self.上次补,
             "上次换新": self.上次换新,
             "下次换": self.下次换秒(),
@@ -2388,7 +2527,14 @@ class 池:
             "总上行文": 人读(self.总上行),
             "总下行文": 人读(self.总下行),
             "起算": self.起算,
-            "池": [一.快照() for 一 in self.条们],
+            "换代": int(self.换代 or 0),
+            "档计": {
+                "刚提取": sum(1 for 一 in self.条们 if 一.档(self.换代) == "刚提取"),
+                "本批": sum(1 for 一 in self.条们 if 一.档(self.换代) == "本批"),
+                "上批": sum(1 for 一 in self.条们 if 一.档(self.换代) == "上批"),
+                "退役": sum(1 for 一 in self.条们 if 一.退役),
+            },
+            "池": [一.快照(self.换代) for 一 in self.条们],
             **self.日统计(),
         }
 
