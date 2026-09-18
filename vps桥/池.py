@@ -90,7 +90,7 @@ def 人读(n: int) -> str:
     "port": 41000,
     "web": "0.0.0.0",
     "web_port": 41001,
-    "pool_size": 100,
+    "pool_size": 50,
     "mode": "round_robin",
     "sticky": "",
     "fail_n": 3,
@@ -102,11 +102,11 @@ def 人读(n: int) -> str:
     "fetch_url": "",
     "fetch_cmd": "",
     "fetch_scheme": "",
-    "auto_rotate": 30,
+    "auto_rotate": 300,
     "sc_base": "https://global.shanchendaili.com",
     "sc_key": "",
     "sc_code": "",
-    "sc_count": 100,
+    "sc_count": 50,
     "sc_time": 0,
     "sc_protocol": "s5",
     # 三格留空=每批随机一国，一次提够指定条数。钉死了就按钉的提
@@ -114,7 +114,7 @@ def 人读(n: int) -> str:
     "sc_state": "",
     "sc_city": "",
     "sc_white": 1,
-    # auto=谁有凭证用谁；两家都填则按上次成功的，失败换另一家
+    # auto=谁有凭证用谁；多家都填则按上次成功的，失败换下一家
     "provider": "auto",
     "go_base": "https://api.ipipgo.com",
     "go_key": "",
@@ -123,7 +123,18 @@ def 人读(n: int) -> str:
     "go_pass": "",
     "go_host": "proxy.ipipgo.com",
     "go_port": 1080,
-    "defaults_ver": 17,
+    # 1024Proxy：控制台 token 用来自动加白；提取走 white.1024proxy.com
+    "p24_base": "https://api.1024proxy.com",
+    "p24_white_api": "https://white.1024proxy.com/white/api",
+    "p24_token": "",
+    "p24_url": "",
+    "p24_user": "",
+    "p24_pass": "",
+    "p24_host": "us.1024proxy.io",
+    "p24_port": 3000,
+    "p24_time": 5,
+    "p24_white": 1,
+    "defaults_ver": 20,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -134,18 +145,21 @@ def 人读(n: int) -> str:
     "wall_minutes": 10,
     "wall_port": 0,
     # 0=关掉桥分流，恢复 X-UI 原设置；1=dola 走 127.0.0.1:41000
-    "proxy_on": 0,
+    "proxy_on": 1,
     "随机国库": ["JP", "KR", "SG", "TH", "VN", "MY", "PH", "ID", "BR"],
     "proxies": [],
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-18.2"
+版本 = "2026-09-18.3"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
+p24主机 = "1024proxy"
 # 换新后旧线路最多再留这么久：有连接的把回包走完，超时也从池里拿掉（套接字仍由转发握着）
 交叠秒 = 30
+# 工作池里的拉取线路最多活这么久，到点必须下，哪怕这轮一个都没验过
+池寿秒 = 300
 
 # 三格留空时每批从配置里的随机国库抽一个。下面是出厂名单，面板和 API 都能加减。
 默随机国库 = (
@@ -206,6 +220,8 @@ class 条:
         # 换新时先入新一批，旧的标退役：不再接新连接，等已有连接把回包走完
         self.退役 = False
         self.退役于 = 0.0
+        # 进工作池的时刻。拉取线路按这个算 5 分钟寿限；0=磁盘里捞上来的，立刻算过期
+        self.入池于 = float(信.get("入池于") or 0)
 
     def 键(self) -> str:
         return f"{self.方案}|{self.主机}|{self.端口}|{self.用户}"
@@ -353,6 +369,15 @@ class 池:
                 self.设["wall_port"] = 默认["wall_port"]
             if 旧版 < 17:
                 self.设["proxy_on"] = 0
+            if 旧版 < 18:
+                self.设["p24_white"] = int(默认["p24_white"])
+            if 旧版 < 19:
+                self.设["sc_count"] = 默认["sc_count"]
+                self.设["pool_size"] = 默认["pool_size"]
+                self.设["auto_rotate"] = 默认["auto_rotate"]
+                self.设["p24_time"] = 默认["p24_time"]
+            if 旧版 < 20:
+                self.设["proxy_on"] = 1
             self.设["defaults_ver"] = 默认["defaults_ver"]
         self.条们 = []
         for 一 in 原.get("proxies") or []:
@@ -362,10 +387,10 @@ class 池:
                 源, 一 = str(一.get("来源") or "手加"), 一["串"]
             # 闪臣的线路只可能是提取来的。补来源之前存下的那批被当成手加，
             # 换新永远清不掉，池子从 30 涨到 56。不管存成什么格式，一律认回拉取
-            if 闪臣主机 in str(一) or ipipgo主机 in str(一):
+            if 闪臣主机 in str(一) or ipipgo主机 in str(一) or p24主机 in str(一):
                 源 = "拉取"
             try:
-                self._塞(一, 来源=源, 落盘=False)
+                self._塞(一, 来源=源, 落盘=False, 入时=0.0)
             except ValueError as 错:
                 日志.warning("跳过非法代理：%s", 错)
         self._复流量()
@@ -414,6 +439,16 @@ class 池:
             "go_pass": self.设.get("go_pass") or "",
             "go_host": self.设.get("go_host") or 默认["go_host"],
             "go_port": int(self.设.get("go_port") or 默认["go_port"]),
+            "p24_base": self.设.get("p24_base") or 默认["p24_base"],
+            "p24_white_api": self.设.get("p24_white_api") or 默认["p24_white_api"],
+            "p24_token": self.设.get("p24_token") or "",
+            "p24_url": self.设.get("p24_url") or "",
+            "p24_user": self.设.get("p24_user") or "",
+            "p24_pass": self.设.get("p24_pass") or "",
+            "p24_host": self.设.get("p24_host") or 默认["p24_host"],
+            "p24_port": int(self.设.get("p24_port") or 默认["p24_port"]),
+            "p24_time": int(self.设.get("p24_time") or 默认["p24_time"]),
+            "p24_white": int(self.设.get("p24_white") or 0),
             "defaults_ver": int(self.设.get("defaults_ver") or 默认["defaults_ver"]),
             "web_pass": self.设["web_pass"],
             "auto_update": int(self.设.get("auto_update") or 0),
@@ -518,7 +553,8 @@ class 池:
             return False
         return int(端口) in {self.听口(), self.网页口()}
 
-    def _塞(self, 串或信, 来源: str = "手加", 落盘: bool = True) -> 条:
+    def _塞(self, 串或信, 来源: str = "手加", 落盘: bool = True,
+           入时: float | None = None) -> 条:
         if isinstance(串或信, dict) and 串或信.get("主机"):
             信 = 串或信
         else:
@@ -529,14 +565,18 @@ class 池:
         if self.是自环(主, 口):
             raise ValueError(f"拒绝自环 {主}:{口}（不能指回桥自己）")
         键 = f"{规范协议(信.get('方案') or 'socks5')}|{主}|{口}|{信.get('用户') or ''}"
+        now = time.monotonic()
+        起 = now if 入时 is None else float(入时)
         for 已 in self.条们:
             if 已.键() == 键:
                 已.退役 = False
                 已.退役于 = 0.0
                 已.来源 = 来源
                 已.启用 = True
+                已.入池于 = 起
                 return 已
         一 = 条(信, 来源=来源)
+        一.入池于 = 起
         self.条们.append(一)
         if 落盘:
             self.落盘()
@@ -570,13 +610,15 @@ class 池:
         async with self.锁:
             for k in ("mode", "sticky", "fetch_url", "fetch_cmd", "fetch_scheme",
                       "sc_base", "sc_key", "sc_protocol", "sc_cntry", "sc_state", "sc_city",
-                      "provider", "go_base", "go_key", "go_url", "go_user", "go_host"):
+                      "provider", "go_base", "go_key", "go_url", "go_user", "go_host",
+                      "p24_base", "p24_white_api", "p24_url", "p24_user", "p24_host"):
                 if k in 补 and 补[k] is not None:
                     self.设[k] = str(补[k]).strip()
             for k in ("pool_size", "fail_n", "check_interval", "check_conc",
                       "connect_timeout", "auto_rotate", "sc_count", "sc_time", "sc_white",
                       "go_port", "auto_update", "update_minutes",
-                      "wall_check", "wall_minutes", "wall_port", "proxy_on"):
+                      "wall_check", "wall_minutes", "wall_port", "proxy_on",
+                      "p24_port", "p24_time", "p24_white"):
                 if k in 补 and 补[k] not in (None, ""):
                     self.设[k] = int(补[k])
             # 安全码 / IPIPGO 密码只写：页面永远不回显，留空表示保持原样
@@ -585,11 +627,20 @@ class 池:
                 self.闪臣态["码锁到"] = 0.0
             if str(补.get("go_pass") or "").strip():
                 self.设["go_pass"] = str(补["go_pass"]).strip()
+            if str(补.get("p24_token") or "").strip():
+                self.设["p24_token"] = str(补["p24_token"]).strip()
+            if str(补.get("p24_pass") or "").strip():
+                self.设["p24_pass"] = str(补["p24_pass"]).strip()
             if str(补.get("web_pass") or "").strip():
                 self.设["web_pass"] = str(补["web_pass"]).strip()
             键或址 = str(补.get("go_key") or "").strip()
             if 键或址.startswith(("http://", "https://")):
                 self.设["go_url"] = 键或址
+            千令 = str(补.get("p24_token") or "").strip()
+            if 千令.startswith(("http://", "https://")):
+                self.设["p24_url"] = 千令
+                if self.设.get("p24_token") == 千令:
+                    self.设["p24_token"] = ""
             if "随机国库" in 补:
                 列 = 洗国库(补.get("随机国库"))
                 if 列:
@@ -611,22 +662,20 @@ class 池:
     def 代理开(self) -> bool:
         return bool(int(self.设.get("proxy_on") or 0))
 
-    def 有效换期(self) -> int:
-        """真正采用的换新间隔（秒）。尊重 IP 时长：长效 IP 不在到期前被换掉。
+    def 池寿(self) -> int:
+        return 池寿秒
 
-        sc_time 是闪臣提取页的时长档，不是分钟数：
-          0 = 每次更换 IP（5-30 分钟）  2 = 1-6 小时  1 = 每次请求更换 IP
-        用户把「自动换新秒」设成 30，却选了 1-6 小时，等于每 30 秒就把
-        还没到期的 IP 扔了。这里给一个按档位的下限，取两者较大值。
-        """
+    def 有效换期(self) -> int:
+        """工作池拉取线路最多活 5 分钟，到点必须换。代理关着才不换。"""
         if not self.代理开():
             return 0
-        设换 = max(0, int(self.设.get("auto_rotate") or 0))
-        模 = int(self.设.get("sc_time") or 0)
-        if 设换 <= 0:
-            return 0  # 用户主动关了自动换新
-        下限 = 3600 if 模 == 2 else 30
-        return max(设换, 下限)
+        寿 = self.池寿()
+        try:
+            设换 = int(self.设.get("auto_rotate") or 0)
+        except (TypeError, ValueError):
+            设换 = 0
+        期 = 设换 if 设换 > 0 else 寿
+        return max(30, min(寿, 期))
 
     def 换说(self) -> str:
         if not self.代理开():
@@ -634,8 +683,7 @@ class 池:
         期 = self.有效换期()
         if 期 <= 0:
             return "关"
-        设换 = max(0, int(self.设.get("auto_rotate") or 0))
-        return f"每 {期} 秒" + ("（按 IP 时长抬到下限）" if 期 > 设换 else "")
+        return f"每 {期} 秒，拉取线路最多活 {self.池寿()} 秒"
 
     def 下次换秒(self) -> int:
         """还有多少秒换下一批。没开自动换新返回 -1。"""
@@ -645,10 +693,37 @@ class 池:
         return max(0, int(换期 - (time.monotonic() - self.换基)))
 
     def 健康们(self) -> list[条]:
-        return [一 for 一 in self.条们 if 一.启用 and 一.健康 and not 一.退役]
+        now = time.monotonic()
+        return [一 for 一 in self.条们
+                if 一.启用 and 一.健康 and not 一.退役 and not self._过期了(一, now)]
 
     def _提取的(self, 一: 条) -> bool:
-        return 一.来源 == "拉取" or 闪臣主机 in 一.主机 or ipipgo主机 in 一.主机
+        return (一.来源 == "拉取" or 闪臣主机 in 一.主机 or ipipgo主机 in 一.主机
+                or p24主机 in 一.主机)
+
+    def _过期了(self, 一: 条, now: float | None = None) -> bool:
+        if not self._提取的(一):
+            return False
+        now = time.monotonic() if now is None else now
+        起 = float(一.入池于 or 0)
+        return 起 <= 0 or (now - 起) >= self.池寿()
+
+    def _标过期(self) -> int:
+        """到点的拉取线路立刻退役，新连接不再走它们。返回新标退役的条数。"""
+        now = time.monotonic()
+        n = 0
+        旧号: set[str] = set()
+        for 一 in self.条们:
+            if 一.退役 or not self._提取的(一):
+                continue
+            if self._过期了(一, now):
+                一.退役 = True
+                一.退役于 = now
+                旧号.add(一.号)
+                n += 1
+        if 旧号:
+            self.粘 = {k: v for k, v in self.粘.items() if v not in 旧号}
+        return n
 
     def _收旧(self, 宽限: float = 交叠秒) -> int:
         """只拿掉超过交叠时限的退役线路。空闲也留着，避免换新当下把旧 IP 从面板抹掉。不关套接字。"""
@@ -679,9 +754,12 @@ class 池:
 
     async def 选(self, 目标: str = "") -> 条 | None:
         async with self.锁:
+            self._标过期()
             候选 = self.健康们()
             if not 候选:
-                候选 = [一 for 一 in self.条们 if 一.启用 and not 一.退役]
+                now = time.monotonic()
+                候选 = [一 for 一 in self.条们
+                       if 一.启用 and not 一.退役 and not self._过期了(一, now)]
             if not 候选:
                 return None
             粘住 = str(self.设.get("sticky") or "")
@@ -706,7 +784,7 @@ class 池:
 
     async def 收旧(self) -> int:
         async with self.锁:
-            n = self._收旧()
+            n = self._标过期() + self._收旧()
             if n:
                 self.写状态()
             return n
@@ -833,36 +911,62 @@ class 池:
                 and str(self.设.get("go_pass") or "").strip())
         )
 
+    def p24开(self) -> bool:
+        return bool(
+            str(self.设.get("p24_token") or "").strip()
+            or str(self.设.get("p24_url") or "").strip()
+            or (str(self.设.get("p24_user") or "").strip()
+                and str(self.设.get("p24_pass") or "").strip())
+        )
+
     def 当前源(self) -> str:
         序 = self.源顺序()
         return 序[0] if 序 else ""
 
     def 源顺序(self) -> list[str]:
         选 = str(self.设.get("provider") or "auto").strip() or "auto"
-        闪, 果 = self.闪臣开(), self.ipipgo开()
+        闪, 果, 千 = self.闪臣开(), self.ipipgo开(), self.p24开()
         if 选 == "shanchen":
             return ["shanchen"] if 闪 else []
         if 选 == "ipipgo":
             return ["ipipgo"] if 果 else []
+        if 选 in ("1024", "p24", "proxy1024"):
+            return ["1024"] if 千 else []
         序: list[str] = []
+        if self.上次源 == "1024" and 千:
+            序.append("1024")
         if self.上次源 == "ipipgo" and 果:
             序.append("ipipgo")
         if 闪:
             序.append("shanchen")
         if 果 and "ipipgo" not in 序:
             序.append("ipipgo")
+        if 千 and "1024" not in 序:
+            序.append("1024")
         return 序
 
     def 源名(self, 源: str = "") -> str:
-        return {"shanchen": "闪臣", "ipipgo": "IPIPGO"}.get(源 or self.当前源(), "无")
+        return {"shanchen": "闪臣", "ipipgo": "IPIPGO", "1024": "1024"}.get(源 or self.当前源(), "无")
 
     def 码锁着(self) -> bool:
         """闪臣对连续错的安全码会上锁，越试锁得越久，所以撞过 1006 就先停手。"""
         return time.time() < float(self.闪臣态.get("码锁到") or 0)
 
+    def _要加白的源(self) -> tuple[bool, bool]:
+        选 = str(self.设.get("provider") or "auto").strip() or "auto"
+        闪 = self.闪臣开() and 选 in ("auto", "shanchen")
+        千 = self.p24开() and 选 in ("auto", "1024", "p24", "proxy1024")
+        return 闪, 千
+
+    def _1024令(self) -> str:
+        return str(self.设.get("p24_token") or "").strip()
+
     def 可自动白(self) -> bool:
-        return (self.闪臣开() and bool(str(self.设.get("sc_code") or "").strip())
-                and bool(int(self.设.get("sc_white") or 0)) and not self.码锁着())
+        闪, 千 = self._要加白的源()
+        if (闪 and bool(str(self.设.get("sc_code") or "").strip())
+                and bool(int(self.设.get("sc_white") or 0)) and not self.码锁着()):
+            return True
+        return 千 and bool(int(self.设.get("p24_white") or 0)) and bool(self._1024令())
 
     def _闪臣址(self, 名: str, 参: dict[str, Any]) -> str:
         # 海外动态流量走 global 这套 flow-api，不要再用 sch.shanchendaili.com
@@ -886,6 +990,144 @@ class 池:
         码, 话, 数 = 包
         return 码, (话 or "ok") if 码 == 0 else 闪臣说(码, 话), 数
 
+    def _1024调(self, 路: str, 参: dict[str, Any] | None = None) -> tuple[int, str, Any]:
+        """控制台接口一律 form + token。返回 (码, 人话, data)，0=成功。"""
+        令 = self._1024令()
+        if not 令:
+            return -1, "没填 1024 控制台 token", None
+        底 = str(self.设.get("p24_base") or 默认["p24_base"]).rstrip("/")
+        if not 底.startswith(("http://", "https://")):
+            底 = "https://" + 底
+        路 = str(路 or "")
+        if not 路.startswith("/"):
+            路 = "/" + 路
+        身 = {"lang": "zh", "token": 令}
+        for k, v in (参 or {}).items():
+            if v not in (None, ""):
+                身[k] = v
+        try:
+            求 = Request(
+                底 + 路,
+                data=urlencode(身).encode("utf-8"),
+                headers={
+                    "User-Agent": "xui-bridge",
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                },
+            )
+            with urlopen(求, timeout=20) as r:
+                文 = r.read().decode("utf-8", "replace")
+        except Exception as 错:
+            return -1, f"连不上 1024：{错}", None
+        try:
+            包 = json.loads(文) if (文 or "").strip().startswith("{") else None
+        except ValueError:
+            包 = None
+        if not isinstance(包, dict):
+            return -1, f"1024 返回看不懂：{(文 or '').strip()[:140]}", None
+        try:
+            码 = int(包.get("code") if 包.get("code") is not None else -1)
+        except (TypeError, ValueError):
+            码 = -1
+        话 = str(包.get("msg") or 包.get("message") or "").strip()
+        return 码, 话 or ("ok" if 码 == 0 else f"错误码 {码}"), 包.get("data")
+
+    def _1024子号(self) -> str:
+        缓 = str(self.闪臣态.get("p24号") or "").strip()
+        if 缓:
+            return 缓
+        码, _, 数 = self._1024调("/v1/1024/subUsers", {"page": 1, "page_size": 200})
+        if 码 != 0:
+            return ""
+        列 = 数.get("list") if isinstance(数, dict) else 数
+        if not isinstance(列, list):
+            return ""
+        要 = str(self.设.get("p24_user") or "").strip()
+        中 = ""
+        for 一 in 列:
+            if not isinstance(一, dict):
+                continue
+            号 = str(一.get("id") or "").strip()
+            if not 号:
+                continue
+            if 要 and str(一.get("username") or "") == 要:
+                中 = 号
+                break
+            if not 中:
+                中 = 号
+        if 中:
+            self.闪臣态["p24号"] = 中
+        return 中
+
+    def _1024查白(self) -> tuple[bool, list[dict]]:
+        码, 说, 数 = self._1024调("/v1/trafficWhiteList")
+        if 码 != 0:
+            self.闪臣态["白名单说"] = 说
+            return False, []
+        列 = []
+        for 一 in (数 or []) if isinstance(数, list) else []:
+            if not isinstance(一, dict):
+                continue
+            列.append({
+                "id": str(一.get("id") or ""),
+                "ip": str(一.get("user_ip") or 一.get("ip") or ""),
+                "备注": str(一.get("mark") or 一.get("username") or ""),
+            })
+        return True, 列
+
+    def _1024余额(self) -> str:
+        码, 说, 数 = self._1024调("/v1/trafficInfo")
+        if 码 != 0 or not isinstance(数, dict):
+            self.闪臣态["p24余额说"] = 说
+            return ""
+        try:
+            余 = int(数.get("traffic") or 0)
+        except (TypeError, ValueError):
+            余 = 0
+        文 = 人读(余) if 余 else "0"
+        self.闪臣态["p24余额"] = 文
+        self.闪臣态["p24余额说"] = ""
+        return 文
+
+    def _1024加白(self, ip: str = "", 备注: str = "xui-bridge") -> tuple[bool, str]:
+        if not self._1024令():
+            return False, "没填控制台 token，登录后从后台复制，登录有滑块验证码不能代登"
+        目 = str(ip or "").strip() or self.本机出口IP()
+        if not 目:
+            return False, "问不到本机出口 IP"
+        好, 列 = self._1024查白()
+        if 好 and any(一.get("ip") == 目 for 一 in 列):
+            return True, f"{目} 已在白名单"
+        检码, 检说, 检 = self._1024调("/v1/checkTrafficWhite")
+        if 检码 == 0 and isinstance(检, dict) and 检.get("is_cn"):
+            return False, "1024 不支持给大陆 IP 加白名单，VPS 必须是海外出口"
+        参: dict[str, Any] = {"ips": 目, "mark": 备注 or "xui-bridge"}
+        号 = self._1024子号()
+        if 号:
+            参["account_id"] = 号
+        码, 说, _ = self._1024调("/v1/addTrafficWhite", 参)
+        已 = 码 == 0 or ("exist" in 说.lower()) or ("已存在" in 说) or ("已经" in 说)
+        if 已:
+            self._1024查白()
+            return True, 说 or f"已加入 {目}"
+        if "cn" in 说.lower() or "大陆" in 说:
+            return False, 说 or "大陆 IP 加不了"
+        return False, 说
+
+    def _1024删白(self, 号: str = "", ip: str = "") -> tuple[bool, str]:
+        目 = str(ip or "").strip()
+        if not 目:
+            for 一 in self.闪臣态.get("白名单") or []:
+                if str(一.get("id") or "") == str(号 or "").strip():
+                    目 = str(一.get("ip") or "")
+                    break
+        if not 目:
+            return False, "1024 删白名单要 IP"
+        码, 说, _ = self._1024调("/v1/delTrafficWhite", {"ips": 目})
+        好 = 码 == 0
+        if 好:
+            self._1024查白()
+        return 好, 说
+
     def 本机出口IP(self) -> str:
         """问一下外面看到的是哪个 IP，白名单要加的就是它。缓存十分钟。"""
         缓 = str(self.闪臣态.get("本机IP") or "")
@@ -906,9 +1148,26 @@ class 池:
         return 缓
 
     def 加白名单(self, ip: str = "", 备注: str = "xui-bridge") -> tuple[bool, str]:
-        """ip 留空就让闪臣按请求来源 IP 加，正好是本机出口。阻塞。"""
-        if not self.闪臣开():
-            return False, "没填 API Key"
+        """ip 留空就按本机出口加。闪臣和 1024 谁配了加谁。阻塞。"""
+        说们: list[str] = []
+        好 = False
+        闪, 千 = self._要加白的源()
+        if 闪:
+            一好, 一说 = self._闪臣加白(ip, 备注)
+            好 = 好 or 一好
+            说们.append("闪臣：" + 一说)
+        if 千:
+            一好, 一说 = self._1024加白(ip, 备注)
+            好 = 好 or 一好
+            说们.append("1024：" + 一说)
+        if not 说们:
+            return False, "没配能加白的源（闪臣要 Key+安全码，1024 要控制台 token）"
+        说 = "；".join(说们)
+        self.闪臣态["白名单说"] = f"{time.strftime('%H:%M:%S')} {说}"
+        (日志.info if 好 else 日志.warning)("加白名单：%s", 说)
+        return 好, 说
+
+    def _闪臣加白(self, ip: str = "", 备注: str = "xui-bridge") -> tuple[bool, str]:
         安全码 = str(self.设.get("sc_code") or "").strip()
         if not 安全码:
             return False, "没填安全码，闪臣要求改白名单必须带安全码"
@@ -924,28 +1183,33 @@ class 池:
             说 += "。已暂停自动重试 10 分钟，重存一次安全码可立刻解除"
         elif 好:
             self.闪臣态["码锁到"] = 0.0
-        self.闪臣态["白名单说"] = f"{time.strftime('%H:%M:%S')} {'已加入白名单' if 好 else 说}"
-        (日志.info if 好 else 日志.warning)("加白名单：%s", 说)
         if 好:
             self.查白名单()
         return 好, 说
 
     def 删白名单(self, 号: str = "", ip: str = "") -> tuple[bool, str]:
-        安全码 = str(self.设.get("sc_code") or "").strip()
-        if not self.闪臣开() or not 安全码:
-            return False, "要先填 API Key 和安全码"
         if not str(号 or "").strip() and not str(ip or "").strip():
             return False, "得给 id 或 ip"
-        码, 说, _ = self._闪臣调("whitelist-remove.html", {
-            "key": str(self.设.get("sc_key") or "").strip(),
-            "security_code": 安全码,
-            "id": str(号 or "").strip(),
-            "ip": str(ip or "").strip(),
-        })
-        好 = 码 == 0
+        if self.p24开() and (self.当前源() == "1024" or not self.闪臣开()):
+            好, 说 = self._1024删白(号, ip)
+        else:
+            安全码 = str(self.设.get("sc_code") or "").strip()
+            if not self.闪臣开() or not 安全码:
+                if self.p24开():
+                    好, 说 = self._1024删白(号, ip)
+                else:
+                    return False, "要先填能改白名单的源"
+            else:
+                码, 说, _ = self._闪臣调("whitelist-remove.html", {
+                    "key": str(self.设.get("sc_key") or "").strip(),
+                    "security_code": 安全码,
+                    "id": str(号 or "").strip(),
+                    "ip": str(ip or "").strip(),
+                })
+                好 = 码 == 0
+                if 好:
+                    self.查白名单()
         self.闪臣态["白名单说"] = f"{time.strftime('%H:%M:%S')} {'已删除' if 好 else 说}"
-        if 好:
-            self.查白名单()
         return 好, 说
 
     def 查余额(self) -> tuple[bool, str]:
@@ -981,11 +1245,30 @@ class 池:
 
     def 刷闪臣(self) -> None:
         """余额、白名单、本机出口 IP 一次刷全。阻塞，需放线程里跑。"""
-        if not self.闪臣开():
+        if not (self.闪臣开() or self.p24开()):
             return
         self.闪臣态["本机IP"] = self.本机出口IP()
-        self.查余额()
-        self.查白名单()
+        白: list[dict] = []
+        闪余 = ""
+        if self.闪臣开():
+            self.查余额()
+            闪余 = str(self.闪臣态.get("余额") or "")
+            好, 列 = self.查白名单()
+            if 好:
+                白.extend(列)
+        千余 = self._1024余额() if self._1024令() else ""
+        if self._1024令():
+            好, 列 = self._1024查白()
+            if 好:
+                白.extend(列)
+        if 闪余 and 千余:
+            self.闪臣态["余额"] = f"闪臣 {闪余}；1024 {千余}"
+        elif 千余 and not 闪余:
+            self.闪臣态["余额"] = 千余
+        if 白:
+            self.闪臣态["白名单"] = 白
+        elif self._1024令() and not self.闪臣开():
+            self.闪臣态["白名单"] = 白
         self.闪臣态["刷时间"] = time.strftime("%H:%M:%S")
 
     def 节点端口们(self) -> list[int]:
@@ -1177,9 +1460,11 @@ class 池:
                 pass
 
     async def 一键开跑(self, 键: str, 码: str, 供应商: str = "",
-                    go_key: str = "", go_user: str = "", go_pass: str = "") -> list[str]:
-        """面板上就这一个按钮：存两家的参数、加白名单、提一批、开定时换新。"""
-        补: dict[str, Any] = {"sc_white": 1}
+                    go_key: str = "", go_user: str = "", go_pass: str = "",
+                    p24_token: str = "", p24_user: str = "", p24_pass: str = "",
+                    p24_url: str = "") -> list[str]:
+        """面板上就这一个按钮：存各家参数、加白名单、提一批、开定时换新。"""
+        补: dict[str, Any] = {"sc_white": 1, "p24_white": 1}
         if 供应商:
             补["provider"] = 供应商
         if 键:
@@ -1192,6 +1477,14 @@ class 池:
             补["go_user"] = go_user
         if go_pass:
             补["go_pass"] = go_pass
+        if p24_token:
+            补["p24_token"] = p24_token
+        if p24_user:
+            补["p24_user"] = p24_user
+        if p24_pass:
+            补["p24_pass"] = p24_pass
+        if p24_url:
+            补["p24_url"] = p24_url
         # 第一次开跑才铺默认值。之后再点，高级设置里调过的地区、条数不能被冲掉
         if not self.有拉取源():
             补.update({
@@ -1203,27 +1496,31 @@ class 池:
             })
         await self.改设(补)
         if not self.有拉取源():
-            return ["闪臣和 IPIPGO 都没填，池子保持现状。"]
+            return ["闪臣、IPIPGO、1024 都没填，池子保持现状。"]
         步 = [f"提取源：{self.源名()}（选的是 {self.设.get('provider') or 'auto'}）"]
         if 键:
             步.append(f"闪臣 Key {遮(键)}" + ("，安全码已更新" if 码 else ""))
         if go_key:
             步.append("IPIPGO 凭证已更新")
-        if self.闪臣开():
-            if not str(self.设.get("sc_code") or "").strip():
-                步.append("闪臣还没存安全码——加白名单必须要它。")
-            else:
+        if p24_token or p24_user or p24_url:
+            步.append("1024 凭证已更新")
+        if self.闪臣开() or self.p24开():
+            if self.闪臣开() and not str(self.设.get("sc_code") or "").strip():
+                步.append("闪臣还没存安全码——闪臣加白名单必须要它。")
+            if self.p24开() and not self._1024令():
+                步.append("1024 还没存 token——自动加白必须要控制台 token。")
+            if self.可自动白() or self._1024令() or str(self.设.get("sc_code") or "").strip():
                 await asyncio.to_thread(self.加白名单)
             await asyncio.to_thread(self.刷闪臣)
             快 = self.闪臣快照()
-            步.append(f"闪臣剩余：{快['余额'] or 快['余额说'] or '查不到'}")
+            步.append(f"剩余：{快['余额'] or 快['余额说'] or '查不到'}")
             步.append(f"本机出口 IP {快['本机IP'] or '没问到'}："
-                      + ("已在闪臣白名单" if 快["已加白"] else "不在闪臣白名单"))
+                      + ("已在白名单" if 快["已加白"] else "不在白名单"))
         elif self.ipipgo开():
             本 = self.本机出口IP()
             步.append(f"本机出口 IP {本 or '没问到'}。IPIPGO 要在他们后台把这个 IP 加白名单。")
         步.append(await self.换新())
-        步.append(f"自动换新：{self.换说()}，每批 {int(self.设.get('sc_count') or 1)} 条、一国")
+        步.append(f"自动换新：{self.换说()}，每批 {self.提取条数()} 条、一国，先验活再入池")
         return 步
 
     def _钉地区(self) -> tuple[str, str, str]:
@@ -1234,15 +1531,11 @@ class 池:
         )
 
     def 提取条数(self, 数: int | None = None) -> int:
-        目标 = int(self.设.get("sc_count") or self.设.get("pool_size") or 100)
-        目标 = max(1, min(500, 目标))
-        if 数 is None:
-            return 目标
-        数 = max(1, min(500, int(数)))
-        # 每次请求更换 IP 也按设定条数提，不准再被收成 1
-        if int(self.设.get("sc_time") or 0) == 1 and 数 < 目标:
-            return 目标
-        return 数
+        try:
+            目标 = int(self.设.get("sc_count") or self.设.get("pool_size") or 默认["sc_count"])
+        except (TypeError, ValueError):
+            目标 = int(默认["sc_count"])
+        return max(1, min(500, 目标))
 
     def 提取地址(self, 国: str | None = None, 州: str | None = None, 市: str | None = None,
                 数: int | None = None) -> str:
@@ -1269,6 +1562,9 @@ class 池:
         if self.当前源() == "ipipgo":
             址 = self.ipipgo提取地址(国 or 钉[0], 钉[1], 钉[2], self.提取条数())
             键 = str(self.设.get("go_key") or "").strip()
+        elif self.当前源() == "1024":
+            址 = self.p24提取地址(国 or 钉[0], 钉[1], 钉[2], self.提取条数())
+            键 = ""
         else:
             址 = self.提取地址(国 or None, None, None) if 国 else self.提取地址()
             键 = str(self.设.get("sc_key") or "").strip()
@@ -1276,7 +1572,7 @@ class 池:
 
     def 拉取方案(self) -> str:
         """闪臣接口的三种文本格式都不带协议，只能按套餐参数定。"""
-        if self.闪臣开() or self.ipipgo开():
+        if self.闪臣开() or self.ipipgo开() or self.p24开():
             s5 = str(self.设.get("sc_protocol") or "s5").lower() in ("s5", "socks5")
             return "socks5" if s5 else "http"
         return 规范协议(self.设.get("fetch_scheme")) if self.设.get("fetch_scheme") else ""
@@ -1285,15 +1581,24 @@ class 池:
         本机 = str(self.闪臣态.get("本机IP") or "")
         白 = list(self.闪臣态.get("白名单") or [])
         return {
-            "开": self.闪臣开() or self.ipipgo开(),
+            "开": self.闪臣开() or self.ipipgo开() or self.p24开(),
             "闪臣开": self.闪臣开(),
             "ipipgo开": self.ipipgo开(),
+            "p24开": self.p24开(),
             "供应商": self.源名(),
             "供应商选": self.设.get("provider") or "auto",
             "go_key": self.设.get("go_key") or "",
             "go_url": self.设.get("go_url") or "",
             "go_user": self.设.get("go_user") or "",
             "有go密": bool(str(self.设.get("go_pass") or "").strip()),
+            "p24_url": self.设.get("p24_url") or "",
+            "p24_user": self.设.get("p24_user") or "",
+            "p24_host": self.设.get("p24_host") or 默认["p24_host"],
+            "p24_port": int(self.设.get("p24_port") or 默认["p24_port"]),
+            "p24_time": int(self.设.get("p24_time") or 默认["p24_time"]),
+            "p24_white": int(self.设.get("p24_white") or 0),
+            "有token": bool(self._1024令()),
+            "有p24密": bool(str(self.设.get("p24_pass") or "").strip()),
             "有码": bool(str(self.设.get("sc_code") or "").strip()),
             # 只报位数，好让人一眼看出存进去的是不是自己那串
             "码长": len(str(self.设.get("sc_code") or "").strip()),
@@ -1312,7 +1617,7 @@ class 池:
     # ---- 提取与补池 ------------------------------------------------------
 
     def 有拉取源(self) -> bool:
-        return bool(self.闪臣开() or self.ipipgo开()
+        return bool(self.闪臣开() or self.ipipgo开() or self.p24开()
                     or str(self.设.get("fetch_url") or "").strip()
                     or str(self.设.get("fetch_cmd") or "").strip())
 
@@ -1430,8 +1735,10 @@ class 池:
         return self._补账密(出)
 
     def _补账密(self, 列: list[dict]) -> list[dict]:
-        户 = str(self.设.get("go_user") or "").strip()
-        密 = str(self.设.get("go_pass") or "").strip()
+        户 = (str(self.设.get("go_user") or "").strip()
+              or str(self.设.get("p24_user") or "").strip())
+        密 = (str(self.设.get("go_pass") or "").strip()
+              or str(self.设.get("p24_pass") or "").strip())
         if not (户 or 密):
             return 列
         for 一 in 列:
@@ -1529,9 +1836,95 @@ class 池:
                 return 出
         return self._ipipgo账密批(国, 数)
 
+    def _1024粘(self) -> bool:
+        return int(self.设.get("sc_time") or 0) != 1
+
+    def _1024时(self) -> int:
+        try:
+            t = int(self.设.get("p24_time") or 默认["p24_time"])
+        except (TypeError, ValueError):
+            t = 5
+        # 工作池最多 5 分钟，粘性别长过寿限
+        return max(3, min(5, t))
+
+    def _1024区(self, 国: str) -> str:
+        国 = str(国 or "").strip()
+        return 国 if 国 else "Rand"
+
+    def p24提取地址(self, 国: str = "", 州: str = "", 市: str = "", 数: int | None = None) -> str:
+        数 = self.提取条数(数)
+        区 = self._1024区(国)
+        址 = str(self.设.get("p24_url") or "").strip()
+        if not 址.startswith(("http://", "https://")):
+            址 = str(self.设.get("p24_white_api") or 默认["p24_white_api"]).strip()
+        if not 址.startswith(("http://", "https://")):
+            return ""
+        补: dict[str, Any] = {"region": 区, "num": 数, "format": 1, "type": "txt"}
+        if 州:
+            补["state"] = 州
+        if 市:
+            补["city"] = 市
+        if self._1024粘():
+            补["time"] = self._1024时()
+        else:
+            补["time"] = None
+        return self._改查询(址, 补)
+
+    def _1024入口(self, 国: str) -> tuple[str, int]:
+        现 = str(self.设.get("p24_host") or "").strip() or 默认["p24_host"]
+        口 = int(self.设.get("p24_port") or 0) or int(默认["p24_port"])
+        官 = {默认["p24_host"], "hk.1024proxy.io", ""}
+        if 现 not in 官:
+            return 现, 口
+        亚 = {"JP", "KR", "SG", "TH", "VN", "MY", "PH", "ID", "HK", "TW", "IN", "AU", "CN"}
+        if (国 or "").upper() in 亚:
+            return "hk.1024proxy.io", 口
+        return (现 or 默认["p24_host"]), 口
+
+    def _1024账密批(self, 国: str, 州: str, 市: str, 数: int) -> list[dict]:
+        户 = str(self.设.get("p24_user") or "").strip()
+        密 = str(self.设.get("p24_pass") or "").strip()
+        if not (户 and 密):
+            return []
+        主, 口 = self._1024入口(国)
+        方案 = self.拉取方案() or "socks5"
+        粘 = self._1024粘()
+        时 = self._1024时()
+        区 = (国 or "").strip().lower()
+        出 = []
+        for _ in range(数):
+            名 = 户
+            if 区 and 区 not in ("rand", "random"):
+                名 += f"-region-{区}"
+            if 州:
+                名 += f"-st-{州}"
+            if 市:
+                名 += f"-city-{市}"
+            if 粘:
+                名 += f"-sid-{uuid.uuid4().hex[:8]}-t-{时}"
+            出.append({"方案": 方案, "主机": 主, "端口": 口, "用户": 名, "密码": 密})
+        return 出
+
+    def _抽1024(self, 国: str, 州: str, 市: str, 数: int) -> list[dict]:
+        址 = self.p24提取地址(国, 州, 市, 数)
+        出: list[dict] = []
+        if 址:
+            出 = self._抽一次(址, "")
+            if not 出 and self._1024令() and bool(int(self.设.get("p24_white") or 0)):
+                好, 白说 = self._1024加白()
+                日志.info("1024 提取空，自动加白名单：%s", 白说)
+                if 好:
+                    time.sleep(2)
+                    出 = self._抽一次(址, "")
+        if 出:
+            return 出
+        return self._1024账密批(国, 州, 市, 数)
+
     def _抽源(self, 源: str, 国: str, 州: str, 市: str, 数: int) -> list[dict]:
         if 源 == "ipipgo":
             return self._抽ipipgo(国, 州, 市, 数)
+        if 源 == "1024":
+            return self._抽1024(国, 州, 市, 数)
         return self._抽地(国, 州, 市, 数)
 
     def 地区说(self) -> str:
@@ -1663,58 +2056,78 @@ class 池:
                 最后 = self.上次补
         if 令:
             return self._抽一次("", 令)
-        self.上次补 = 最后 or "两家都提不到"
+        self.上次补 = 最后 or "各家都提不到"
         return []
 
     def 拉取下一条(self) -> dict | None:
         批 = self.拉取一批()
         return 批[0] if 批 else None
 
+    async def 先验一批(self, 批: list[dict]) -> list[dict]:
+        """连 dola 握手，通的才准进工作池。"""
+        if not 批:
+            return []
+        from 转发 import 验一条
+        秒 = float(self.设.get("connect_timeout") or 8)
+        主 = str(self.设.get("check_host") or "www.dola.com").strip() or "www.dola.com"
+        口 = int(self.设.get("check_port") or 443)
+        并发 = max(1, min(64, int(self.设.get("check_conc") or 16)))
+        门 = asyncio.Semaphore(并发)
+
+        async def 验(信: dict) -> dict | None:
+            一 = 条(信, 来源="拉取")
+            async with 门:
+                try:
+                    await 验一条(一, 秒, 主, 口)
+                    return 信
+                except Exception as 错:
+                    日志.info("先验未过 %s：%s", 一.脱敏(), 错)
+                    return None
+
+        果 = await asyncio.gather(*(验(一) for 一 in 批))
+        return [一 for 一 in 果 if 一]
+
     async def 补齐(self) -> str:
         目标 = max(0, int(self.设.get("pool_size") or 0))
         async with self.锁:
+            self._标过期()
             健康数 = len(self.健康们())
         if 目标 <= 0 or 健康数 >= 目标:
             return "池已够，不补"
         if not self.有拉取源():
-            说 = "健康不足但没配提取来源（闪臣 / IPIPGO / fetch_url），保持现有池"
+            说 = "健康不足但没配提取来源（闪臣 / IPIPGO / 1024 / fetch_url），保持现有池"
             self.上次补 = 说
             return 说
-        要 = 目标 - 健康数
+        批 = await asyncio.to_thread(self.拉取一批, None, False)
+        好 = await self.先验一批(批)
         成 = 0
-        批 = await asyncio.to_thread(self.拉取一批, 要, False)
-        for 信 in 批:
-            if 成 >= 要:
-                break
+        for 信 in 好:
+            async with self.锁:
+                if len(self.健康们()) >= 目标:
+                    break
             try:
                 await self.加(信, 来源="拉取")
                 成 += 1
             except ValueError as 错:
                 日志.warning("拉取入池失败：%s", 错)
-        说 = f"补入 {成} 条，健康 {len(self.健康们())}/{目标}"
+        说 = (f"先验 {len(批)} 过 {len(好)}，补入 {成} 条，"
+              f"健康 {len(self.健康们())}/{目标}")
         self.上次补 = 说
         日志.info("%s", 说)
         return 说
 
     async def 换新(self) -> str:
-        """先入新一批，旧拉取线路标退役。新连接走新 IP；旧连接把回包走完再丢。手加不动。"""
-        if not self.有拉取源():
-            说 = "未配置提取接口，无法换新"
-            self.上次补 = 说
-            return 说
-        批 = await asyncio.to_thread(self.拉取一批, None, True)
-        if not 批:
-            说 = self.上次补 or "换新失败，保持原池"
-            if "换新失败" not in 说:
-                说 = f"换新失败 {time.strftime('%H:%M:%S')}：{说}"
-            self.上次补 = 说
-            日志.warning("%s", 说)
-            return 说
+        """先验活再入工作池。旧拉取一律退役；一个都过不了也下掉，允许空池。手加不动。"""
+        批: list[dict] = []
+        if self.有拉取源():
+            批 = await asyncio.to_thread(self.拉取一批, None, True)
+        好 = await self.先验一批(批) if 批 else []
         async with self.锁:
+            self._标过期()
             self._收旧()
             旧 = [一 for 一 in self.条们 if self._提取的(一) and not 一.退役]
             新成 = 0
-            for 信 in 批:
+            for 信 in 好:
                 try:
                     入 = self._塞(信, 来源="拉取", 落盘=False)
                     if 入 in 旧:
@@ -1722,11 +2135,6 @@ class 池:
                     新成 += 1
                 except ValueError as 错:
                     日志.warning("换新入池失败：%s", 错)
-            if 新成 <= 0:
-                说 = f"换新入池 0 条，保持原池 {time.strftime('%H:%M:%S')}"
-                self.上次补 = 说
-                日志.warning("%s", 说)
-                return 说
             now = time.monotonic()
             旧号 = {一.号 for 一 in 旧}
             for 一 in 旧:
@@ -1740,7 +2148,14 @@ class 池:
         self.上次换新 = time.strftime("%Y-%m-%d %H:%M:%S")
         地 = f"，{self.这批地区}" if self.这批地区 else ""
         尾 = f"，{等走} 条交替中" if 等走 else (f"，到期旧线路已下 {丢} 条" if 丢 else "")
-        说 = f"已换新{地}，新 {数} 条{尾} {time.strftime('%H:%M:%S')}"
+        if 新成 <= 0:
+            说 = (f"换新无可用{地}，提 {len(批)} 先验 0，原拉取已下"
+                  f"{尾} {time.strftime('%H:%M:%S')}")
+            self.上次补 = 说
+            日志.warning("%s", 说)
+            return 说
+        说 = (f"已换新{地}，提 {len(批)} 先验过 {新成}，工作 {数} 条"
+              f"{尾} {time.strftime('%H:%M:%S')}")
         self.上次补 = 说
         日志.info("%s", 说)
         return 说
@@ -1774,6 +2189,12 @@ class 池:
             "go_key": self.设.get("go_key") or "",
             "go_url": self.设.get("go_url") or "",
             "go_user": self.设.get("go_user") or "",
+            "p24_url": self.设.get("p24_url") or "",
+            "p24_user": self.设.get("p24_user") or "",
+            "p24_host": self.设.get("p24_host") or 默认["p24_host"],
+            "p24_port": int(self.设.get("p24_port") or 默认["p24_port"]),
+            "p24_time": int(self.设.get("p24_time") or 默认["p24_time"]),
+            "p24_white": int(self.设.get("p24_white") or 0),
             "闪臣": self.闪臣快照(),
             "版本": 版本,
             "上次补": self.上次补,

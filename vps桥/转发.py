@@ -412,7 +412,7 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
 
         换期 = 池子.有效换期()
         现在 = time.monotonic()
-        if 池子.闪臣开() and 现在 - 上次刷 >= 60:
+        if (池子.闪臣开() or 池子.p24开()) and 现在 - 上次刷 >= 60:
             上次刷 = 现在
             try:
                 await asyncio.wait_for(asyncio.to_thread(池子.刷闪臣), timeout=90)

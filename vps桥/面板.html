@@ -217,13 +217,14 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
   <section id="页-提取源" class="hide">
     <div class="card">
       <h2>提取源</h2>
-      <p class="desc">闪臣或 IPIPGO，有哪个填哪个。两家都填时按「用哪家」；自动则谁能提用谁。每批同一国。</p>
+      <p class="desc">闪臣、IPIPGO、1024，有哪个填哪个。多家都填时按「用哪家」；自动则谁能提用谁。1024 开机自动把本机出口加白名单。每批同一国。</p>
       <form id="闪" class="form">
         <label class="f">用哪家
           <select name="provider">
             <option value="auto">自动</option>
             <option value="shanchen">闪臣</option>
             <option value="ipipgo">IPIPGO</option>
+            <option value="1024">1024</option>
           </select>
         </label>
         <label class="f wide">闪臣 API Key<input name="sc_key" placeholder="闪臣个人中心"></label>
@@ -236,6 +237,16 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
         <label class="f">IPIPGO 账号<input name="go_user" placeholder="账密提取才要"></label>
         <label class="f">IPIPGO 密码
           <input name="go_pass" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" placeholder="已保存则留空">
+        </label>
+        <label class="f wide">1024 控制台 token
+          <input name="p24_token" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" placeholder="登录后台后复制 token，用来自动加白">
+        </label>
+        <label class="f">1024 子账号<input name="p24_user" placeholder="账密入口才要，例如 sscs…"></label>
+        <label class="f">1024 密码
+          <input name="p24_pass" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" placeholder="已保存则留空">
+        </label>
+        <label class="f wide">1024 提取链接
+          <input name="p24_url" placeholder="可空，默认 white.1024proxy.com/white/api">
         </label>
         <div class="actions" style="grid-column:1/-1">
           <button class="btn pri" type="submit" id="开跑">保存并自动开跑</button>
@@ -307,7 +318,7 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
           <select name="proxy_on"><option value="0">关（恢复 X-UI）</option><option value="1">开</option></select>
         </label>
         <label class="f wide">别家提取接口 fetch_url<span id="盖"></span>
-          <input name="fetch_url" placeholder="用闪臣 / IPIPGO 就不用填">
+          <input name="fetch_url" placeholder="用闪臣 / IPIPGO / 1024 就不用填">
         </label>
         <label class="f wide">fetch_cmd <input name="fetch_cmd" placeholder="命令 stdout，一行一条"></label>
         <div class="actions" style="grid-column:1/-1">
@@ -428,23 +439,24 @@ function 填闪(s){
   const 盒=document.getElementById("闪态");
   const 盖=document.getElementById("盖");
   if(!s || !s.开){
-    盒.innerHTML="<p class=desc>还没填闪臣或 IPIPGO，提取没启用。</p>";
+    盒.innerHTML="<p class=desc>还没填闪臣、IPIPGO 或 1024，提取没启用。</p>";
     盖.textContent="";
     return;
   }
-  盖.textContent="（上面两家已接管，这里填了也不生效）";
+  盖.textContent="（上面提取源已接管，这里填了也不生效）";
   const 白=s.白名单||[];
   const 余=s.余额?("<b>"+esc(s.余额)+"</b>"):"<span class=muted>还没查到</span>";
   const 本=s.本机IP?esc(s.本机IP):"没问到";
   const 态=s.本机IP?(s.已加白?"<span class='pill ok'>已在白名单</span>"
                             :"<span class='pill bad'>不在白名单</span>")
                   :"<span class='pill mute'>白名单未知</span>";
-  let h="<h2>源状态</h2><p class=desc>余额、本机出口、白名单。提取被 1004 拒就是没加白。</p>";
+  let h="<h2>源状态</h2><p class=desc>余额、本机出口、白名单。闪臣 1004 或 1024 提取为空，多半是没加白。</p>";
   h+=行("剩余流量", 余+(s.余额说?" · "+esc(s.余额说):""));
   h+=行("本机出口 IP", 本+" "+态);
   h+=行("提取地址", "<span class=mono>"+esc(s.提取地址||"—")+"</span>");
   if(s.白名单说) h+="<p class=desc>"+esc(s.白名单说)+"</p>";
-  if(!s.有码) h+="<p class=desc>没存安全码，加删白名单都用不了。</p>";
+  if(s.闪臣开 && !s.有码) h+="<p class=desc>没存闪臣安全码，闪臣加删白名单都用不了。</p>";
+  if(s.p24开 && !s.有token) h+="<p class=desc>没存 1024 token，自动加白用不了。控制台登录有滑块，只能粘贴 token。</p>";
   if(白.length){
     h+="<table style=margin-top:10px><thead><tr><th>白名单 IP</th><th>备注</th><th></th></tr></thead><tbody id=白表></tbody></table>";
   }else h+="<p class=desc>白名单是空的。</p>";
@@ -459,7 +471,7 @@ function 填闪(s){
     const b=document.createElement("button");
     b.className="btn bad"; b.textContent="删除";
     b.onclick=async()=>{
-      if(!confirm("从闪臣白名单删掉 "+(w.ip||w.id)+"？")) return;
+      if(!confirm("从白名单删掉 "+(w.ip||w.id)+"？")) return;
       try{ await api("/api/sc/unwhite",{id:w.id,ip:w.ip}); 吐("已删除"); }
       catch(e){ 吐(e.message,1); }
       刷();
@@ -597,7 +609,7 @@ function 填(d){
     行("验活", esc((d.check_host||"www.dola.com")+":"+(d.check_port||443)))+
     行("供应商", esc(s.供应商||d.供应商||"无"))+
     行("提取地区", esc(s.地区||"随机"))+
-    行("每批", (d.sc_count||100)+" 条")+
+    行("每批", (d.sc_count||50)+" 条")+
     行("自动换新", esc(d.换说||"关"))+
     行("自动更新", d.auto_update?("每 "+(d.update_minutes||5)+" 分钟"):"关")+
     行("桥分流", 开着?"开着":"已关，X-UI 原设置")+
@@ -636,7 +648,7 @@ function 填(d){
     塞(f,"wall_port",d.wall_port||0);
     塞(f,"proxy_on",String(d.proxy_on?1:0));
     塞(f,"fetch_scheme",d.fetch_scheme||"");
-    塞(f,"sc_count",d.sc_count||100);
+    塞(f,"sc_count",d.sc_count||50);
     塞(f,"sc_time",String(d.sc_time==null?0:d.sc_time));
     塞(f,"sc_protocol",d.sc_protocol||"s5");
     塞(f,"sc_state",d.sc_state||"");
@@ -647,8 +659,12 @@ function 填(d){
     塞(g,"sc_key",d.sc_key||"");
     塞(g,"go_key",(d.go_url&&!d.go_key)?d.go_url:(d.go_key||""));
     塞(g,"go_user",d.go_user||"");
+    塞(g,"p24_url",d.p24_url||s.p24_url||"");
+    塞(g,"p24_user",d.p24_user||s.p24_user||"");
     if(g.sc_code && !脏["闪"]) g.sc_code.placeholder=s.有码?"已保存，留空=不改":"闪臣才要";
     if(g.go_pass && !脏["闪"]) g.go_pass.placeholder=s.有go密?"已保存，留空=不改":"账密提取才要";
+    if(g.p24_token && !脏["闪"]) g.p24_token.placeholder=s.有token?"已保存，留空=不改":"控制台登录后的 token";
+    if(g.p24_pass && !脏["闪"]) g.p24_pass.placeholder=s.有p24密?"已保存，留空=不改":"账密入口才要";
   }catch(e){ console.warn(e); }
 }
 async function 刷(){
@@ -694,9 +710,11 @@ document.getElementById("闪").onsubmit=e=>{
   return 忙("开跑","正在开跑…",async()=>{
     const j=await api("/api/sc/setup",{
       provider:f.provider.value, key:f.sc_key.value.trim(), code:f.sc_code.value,
-      go_key:f.go_key.value.trim(), go_user:f.go_user.value.trim(), go_pass:f.go_pass.value
+      go_key:f.go_key.value.trim(), go_user:f.go_user.value.trim(), go_pass:f.go_pass.value,
+      p24_token:f.p24_token.value, p24_user:f.p24_user.value.trim(),
+      p24_pass:f.p24_pass.value, p24_url:f.p24_url.value.trim()
     });
-    f.sc_code.value=""; f.go_pass.value=""; 脏["闪"]=0;
+    f.sc_code.value=""; f.go_pass.value=""; f.p24_token.value=""; f.p24_pass.value=""; 脏["闪"]=0;
     return (j.步||[]).join("\n");
   });
 };
