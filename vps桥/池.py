@@ -162,47 +162,87 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-18.10"
+版本 = "2026-09-18.13"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
 p24主机 = "1024proxy"
 # 1024 白名单提取写死，不再跟面板国家/条数/时长走
 p24提取址 = "https://white.1024proxy.com/white/api?region=Rand&num=1&time=10&format=1&type=txt"
-# 控制台 token 只从环境文件 / 环境变量读，不写进仓库
-p24内置令 = ""
+# 环境文件不上仓库；VPS 更新也拉不到。从本机环境文件落入，开机写进配置后不再问。
+p24内置令 = "36145e476d76242f71d4464f2271a107"
+
+
+def _像令(值: str) -> str:
+    值 = (值 or "").strip().strip('"').strip("'")
+    if not 值 or 值.startswith(("http://", "https://")):
+        return ""
+    return 值
+
+
+def _从文抠令(文: str) -> str:
+    文 = (文 or "").lstrip("\ufeff").strip()
+    if not 文:
+        return ""
+    if 文[:1] in "{[":
+        try:
+            d = json.loads(文)
+        except Exception:
+            d = None
+        if isinstance(d, dict):
+            for k in ("p24_token", "P24_TOKEN", "PROXY1024_TOKEN"):
+                值 = _像令(str(d.get(k) or ""))
+                if 值:
+                    return 值
+    键 = {"p24_token", "P24_TOKEN", "PROXY1024_TOKEN", "token"}
+    for 行 in 文.splitlines():
+        行 = 行.strip()
+        if not 行 or 行.startswith("#") or "=" not in 行:
+            continue
+        k, v = 行.split("=", 1)
+        if k.strip() in 键:
+            值 = _像令(v)
+            if 值:
+                return 值
+    if "\n" not in 文 and "=" not in 文 and 20 <= len(文) <= 80 and 文.isalnum():
+        return 文
+    return ""
 
 
 def _读环境令(另: Path | None = None) -> str:
     for 名 in ("P24_TOKEN", "PROXY1024_TOKEN"):
-        值 = str(os.environ.get(名) or "").strip()
+        值 = _像令(str(os.environ.get(名) or ""))
         if 值:
             return 值
     径们 = [
         Path("/etc/xui-bridge/环境"),
         Path("/etc/xui-bridge/.env"),
+        Path("/etc/xui-bridge/config.json"),
+        Path("/opt/xui-bridge/环境"),
+        Path("/opt/xui-bridge/.env"),
         Path(__file__).resolve().parent / "环境",
         Path(__file__).resolve().parent / ".env",
     ]
     if 另 is not None:
-        径们.extend([另.parent / "环境", 另.parent / ".env"])
-    键 = {"p24_token", "P24_TOKEN", "PROXY1024_TOKEN", "token"}
+        径们.extend([
+            另, 另.parent / "环境", 另.parent / ".env",
+            另.parent / "config.json", 另.parent / "配置.json",
+        ])
+    见: set[Path] = set()
     for p in 径们:
-        if not p.is_file():
-            continue
         try:
-            行们 = p.read_text(encoding="utf-8").splitlines()
+            p = p.resolve()
         except OSError:
             continue
-        for 行 in 行们:
-            行 = 行.strip()
-            if not 行 or 行.startswith("#") or "=" not in 行:
-                continue
-            k, v = 行.split("=", 1)
-            if k.strip() in 键:
-                值 = v.strip().strip('"').strip("'")
-                if 值:
-                    return 值
+        if p in 见 or not p.is_file():
+            continue
+        见.add(p)
+        try:
+            值 = _从文抠令(p.read_text(encoding="utf-8"))
+        except OSError:
+            continue
+        if 值:
+            return 值
     return ""
 
 
@@ -271,7 +311,7 @@ class 条:
         # 换新时先入新一批，旧的标退役：不再接新连接，等已有连接把回包走完
         self.退役 = False
         self.退役于 = 0.0
-        # 进工作池的时刻。拉取线路按这个算 5 分钟寿限；0=磁盘里捞上来的，立刻算过期
+        # 入池于=单调钟，进程内算寿；入时=墙上时钟，重启后仍按这个满 5 分钟必下
         self.入池于 = float(信.get("入池于") or 0)
         self.入时 = float(信.get("入时") or 0)
         self.批次 = int(信.get("批次") or 0)
@@ -295,6 +335,8 @@ class 条:
             return "手加"
         now = time.time() if 现在 is None else 现在
         已用 = now - (self.入时 or now)
+        if self.入时 and 已用 >= 池寿秒:
+            return "退役"
         if int(self.批次 or 0) == int(换代 or 0) and 已用 <= 45:
             return "刚提取"
         if int(self.批次 or 0) == int(换代 or 0):
@@ -588,6 +630,8 @@ class 池:
                 一.入时 = float(命.get("入时") or 0)
             except (TypeError, ValueError):
                 一.入时 = 0
+            if 一.入时 > 0:
+                一.入池于 = time.monotonic() - max(0.0, time.time() - 一.入时)
             try:
                 一.批次 = int(命.get("批次") or 0)
             except (TypeError, ValueError):
@@ -813,14 +857,12 @@ class 池:
                 if 一.启用 and 一.健康 and not 一.退役 and not self._过期了(一, now)]
 
     def 可接们(self) -> list[条]:
-        """换线时优先走新的；没有新的就用旧的顶上，绝不回空池。"""
+        """只接没过期的。过期拉取不再顶上，否则四小时了还能打到旧线上。"""
         新 = self.健康们()
         if 新:
             return 新
-        旧 = [一 for 一 in self.条们 if 一.启用 and not 一.退役]
-        if 旧:
-            return 旧
-        return [一 for 一 in self.条们 if 一.启用]
+        return [一 for 一 in self.条们
+                if 一.启用 and not 一.退役 and not self._提取的(一)]
 
     def _提取的(self, 一: 条) -> bool:
         return (一.来源 == "拉取" or 一.来源.startswith("拉取/")
@@ -845,41 +887,83 @@ class 池:
     def _过期了(self, 一: 条, now: float | None = None) -> bool:
         if not self._提取的(一):
             return False
-        now = time.monotonic() if now is None else now
+        寿 = self.池寿()
+        墙 = float(一.入时 or 0)
+        if 墙 > 0:
+            return (time.time() - 墙) >= 寿
         起 = float(一.入池于 or 0)
-        # 磁盘捞上来的先接着用，一重启就当过期会空池、把现有连接饿死
-        if 起 <= 0:
-            return False
-        return (now - 起) >= self.池寿()
+        if 起 > 0:
+            now = time.monotonic() if now is None else now
+            return (now - 起) >= 寿
+        return True
 
-    def _标过期(self) -> int:
-        """寿限到了才退役。有连接的、以及退役后会空池的，先留着，避免换线掐连接。"""
+    def 条剩秒(self, 一: 条) -> float | None:
+        """拉取线路还能活多久。手加不限。已到期是 0。"""
+        if not self._提取的(一):
+            return None
+        寿 = float(self.池寿())
+        墙 = float(一.入时 or 0)
+        if 墙 > 0:
+            return max(0.0, 寿 - (time.time() - 墙))
+        起 = float(一.入池于 or 0)
+        if 起 > 0:
+            return max(0.0, 寿 - (time.monotonic() - 起))
+        return 0.0
+
+    def _踢过期(self) -> int:
+        """满 5 分钟的拉取立刻从名单拿掉。有连接也踢，会话由转发按剩余寿命掐。"""
         now = time.monotonic()
-        新活 = [一 for 一 in self.条们
-               if 一.启用 and 一.健康 and not 一.退役 and not self._过期了(一, now)]
-        n = 0
+        留: list[条] = []
+        丢 = 0
         旧号: set[str] = set()
         for 一 in self.条们:
-            if 一.退役 or not self._提取的(一):
+            if self._提取的(一) and self._过期了(一, now):
+                一.退役 = True
+                一.退役于 = 一.退役于 or now
+                旧号.add(一.号)
+                丢 += 1
                 continue
-            if 一.连接 > 0:
-                continue
-            if not self._过期了(一, now):
-                continue
-            其余 = [x for x in 新活 if x.号 != 一.号]
-            if not 其余:
-                continue
-            一.退役 = True
-            一.退役于 = now
-            旧号.add(一.号)
-            新活 = 其余
-            n += 1
-        if 旧号:
+            留.append(一)
+        if 丢:
             self.粘 = {k: v for k, v in self.粘.items() if v not in 旧号}
-        return n
+            self.条们 = 留
+        return 丢
+
+    def _标过期(self) -> int:
+        return self._踢过期()
+
+    def _有本批(self) -> bool:
+        代 = int(self.换代 or 0)
+        return any(
+            (not 一.退役) and self._提取的(一) and int(一.批次 or 0) == 代
+            for 一 in self.条们
+        )
+
+    def _收闲上批(self) -> int:
+        """过期空闲立刻拿掉。本批已在时，上批空闲也拿掉。"""
+        代 = int(self.换代 or 0)
+        now = time.monotonic()
+        有本 = self._有本批()
+        留: list[条] = []
+        丢 = 0
+        for 一 in self.条们:
+            if not self._提取的(一):
+                留.append(一)
+                continue
+            过期 = self._过期了(一, now)
+            上 = int(一.批次 or 0) < 代
+            if 一.连接 <= 0 and (过期 or (有本 and 上)):
+                丢 += 1
+                continue
+            留.append(一)
+        if 丢:
+            活号 = {一.号 for 一 in 留}
+            self.粘 = {k: v for k, v in self.粘.items() if v in 活号}
+            self.条们 = 留
+        return 丢
 
     def _收旧(self, 宽限: float = 交叠秒) -> int:
-        """只拿掉超过交叠且已经没有连接的退役线路。有连接的绝不删，避免掐套接字。"""
+        """退役过交叠就从名单拿掉。过期的有连接也拿掉，套接字仍由转发握着。"""
         now = time.monotonic()
         留: list[条] = []
         丢 = 0
@@ -887,9 +971,8 @@ class 池:
             if not 一.退役:
                 留.append(一)
                 continue
-            到期 = (一.退役于 > 0 and (now - 一.退役于) >= 宽限
-                   and 一.连接 <= 0)
-            if 到期:
+            到期 = 一.退役于 > 0 and (now - 一.退役于) >= 宽限
+            if 到期 and (一.连接 <= 0 or self._过期了(一, now)):
                 丢 += 1
                 continue
             留.append(一)
@@ -934,7 +1017,7 @@ class 池:
 
     async def 收旧(self) -> int:
         async with self.锁:
-            n = self._标过期() + self._收旧()
+            n = self._标过期() + self._收闲上批() + self._收旧()
             if n:
                 self.写状态()
             return n
@@ -2437,7 +2520,7 @@ class 池:
             await asyncio.gather(*(跑源(源) for 源 in 源们))
         丢 = 0
         async with self.锁:
-            丢 = self._收旧()
+            丢 = self._收闲上批() + self._收旧()
             self.落盘()
             工作 = len([一 for 一 in self.条们 if self._提取的(一) and not 一.退役])
         if 换代:
@@ -2460,6 +2543,9 @@ class 池:
         return await self._轻质入(换代=True, 换国=True)
 
     def 总览(self) -> dict[str, Any]:
+        if self._踢过期() or self._收闲上批():
+            self.写状态()
+        列 = [一 for 一 in self.条们 if not (self._提取的(一) and self._过期了(一))]
         return {
             "listen": f"{self.设['listen']}:{self.听口()}",
             "web": f"{self.设['web']}:{self.网页口()}",
@@ -2519,22 +2605,22 @@ class 池:
             "proxy_on": int(self.设.get("proxy_on") or 0),
             "分流说": self.分流说,
             "健康": len(self.健康们()),
-            "总数": len(self.条们),
-            "上行": sum(一.上行 for 一 in self.条们),
-            "下行": sum(一.下行 for 一 in self.条们),
-            "上行文": 人读(sum(一.上行 for 一 in self.条们)),
-            "下行文": 人读(sum(一.下行 for 一 in self.条们)),
+            "总数": len(列),
+            "上行": sum(一.上行 for 一 in 列),
+            "下行": sum(一.下行 for 一 in 列),
+            "上行文": 人读(sum(一.上行 for 一 in 列)),
+            "下行文": 人读(sum(一.下行 for 一 in 列)),
             "总上行文": 人读(self.总上行),
             "总下行文": 人读(self.总下行),
             "起算": self.起算,
             "换代": int(self.换代 or 0),
             "档计": {
-                "刚提取": sum(1 for 一 in self.条们 if 一.档(self.换代) == "刚提取"),
-                "本批": sum(1 for 一 in self.条们 if 一.档(self.换代) == "本批"),
-                "上批": sum(1 for 一 in self.条们 if 一.档(self.换代) == "上批"),
-                "退役": sum(1 for 一 in self.条们 if 一.退役),
+                "刚提取": sum(1 for 一 in 列 if 一.档(self.换代) == "刚提取"),
+                "本批": sum(1 for 一 in 列 if 一.档(self.换代) == "本批"),
+                "上批": sum(1 for 一 in 列 if 一.档(self.换代) == "上批"),
+                "退役": sum(1 for 一 in 列 if 一.档(self.换代) == "退役"),
             },
-            "池": [一.快照(self.换代) for 一 in self.条们],
+            "池": [一.快照(self.换代) for 一 in 列],
             **self.日统计(),
         }
 

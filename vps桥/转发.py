@@ -325,7 +325,15 @@ async def 处理客户(读: asyncio.StreamReader, 写: asyncio.StreamWriter, 池
             async def 记下(n: int) -> None:
                 await 池子.记流量(选, 下行=n)
 
-            await asyncio.gather(_对拷(读, 上写, 记上), _对拷(上读, 写, 记下))
+            拷 = asyncio.gather(_对拷(读, 上写, 记上), _对拷(上读, 写, 记下))
+            剩 = 池子.条剩秒(选)
+            try:
+                if 剩 is None:
+                    await 拷
+                else:
+                    await asyncio.wait_for(拷, timeout=max(1.0, 剩))
+            except asyncio.TimeoutError:
+                日志.info("上游到期掐断 %s", 选.脱敏())
         finally:
             await 池子.出(选)
     except Exception as 错:
@@ -353,6 +361,19 @@ async def 开socks(池子: 池) -> asyncio.AbstractServer:
     服 = await asyncio.start_server(_接, 主, 口)
     日志.info("SOCKS5 听 %s:%s", 主, 口)
     return 服
+
+
+async def 收旧循环(池子: 池, 停: asyncio.Event) -> None:
+    """寿限不跟换新/验活绑在一起，免得卡住后还能用到 6 分钟。"""
+    while not 停.is_set():
+        try:
+            await 池子.收旧()
+        except Exception as 错:
+            日志.warning("收旧失败：%s", 错)
+        try:
+            await asyncio.wait_for(停.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            pass
 
 
 async def 验活循环(池子: 池, 停: asyncio.Event) -> None:

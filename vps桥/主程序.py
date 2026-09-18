@@ -41,7 +41,7 @@ def 用北京时间() -> None:
 from 池 import 池
 from 更新 import 补缺旁文件, 自动更新循环
 from 写入分流 import 对齐分流
-from 转发 import 开socks, 验活循环, 查墙循环
+from 转发 import 开socks, 验活循环, 查墙循环, 收旧循环
 
 补缺旁文件()
 
@@ -76,6 +76,7 @@ async def 跑(径: Path) -> None:
     socks = await 开socks(池子)
     页 = await 开网页(池子)
     验 = asyncio.create_task(验活循环(池子, 停))
+    收 = asyncio.create_task(收旧循环(池子, 停))
     更 = asyncio.create_task(自动更新循环(池子, 停))
     墙 = asyncio.create_task(查墙循环(池子, 停))
     日志.info("配置 %s ，池内 %s 条", 径, len(池子.条们))
@@ -84,6 +85,7 @@ async def 跑(径: Path) -> None:
     finally:
         停.set()
         验.cancel()
+        收.cancel()
         更.cancel()
         墙.cancel()
         socks.close()

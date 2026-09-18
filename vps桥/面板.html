@@ -224,7 +224,7 @@ tr.档-退役{opacity:.55}
   <section id="页-代理池" class="hide">
     <div class="card">
       <h2>代理池</h2>
-      <p class="desc">青=刚提取（45 秒内）· 蓝=本批新代理 · 黄=上批仍在用（看已用多久）。轻质换新：接口给几条入几条，不检测、不凑 50。</p>
+      <p class="desc">拉取线路满 5 分钟必下，过期不再接新连接。青=刚提取 · 蓝=本批 · 黄=上批未满寿还挂着连接。</p>
       <div class="rowbar">
         <input id="池滤" placeholder="过滤地址 / 出口 / 来源">
         <button class="btn" id="补">再提一轮</button>
@@ -261,7 +261,7 @@ tr.档-退役{opacity:.55}
           <input name="go_pass" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" placeholder="已保存则留空">
         </label>
         <label class="f wide">1024 控制台 token
-          <input name="p24_token" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" placeholder="登录后台后复制 token，用来自动加白">
+          <input name="p24_token" type="password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" placeholder="可空，已从环境读取">
         </label>
         <label class="f">1024 子账号<input name="p24_user" placeholder="账密入口才要，例如 sscs…"></label>
         <label class="f">1024 密码
@@ -496,7 +496,7 @@ function 填闪(s){
   h+=行("提取地址", "<span class=mono>"+esc(s.提取地址||"—")+"</span>");
   if(s.白名单说) h+="<p class=desc>"+esc(s.白名单说)+"</p>";
   if(s.闪臣开 && !s.有码) h+="<p class=desc>没存闪臣安全码，闪臣加删白名单都用不了。</p>";
-  if(s.p24开 && !s.有token) h+="<p class=desc>没存 1024 token，自动加白用不了。控制台登录有滑块，只能粘贴 token。</p>";
+  if(s.p24_white && s.p24开 && !s.有token) h+="<p class=desc>没存 1024 token，自动加白用不了。提取不靠它。</p>";
   if(白.length){
     h+="<table style=margin-top:10px><thead><tr><th>白名单 IP</th><th>备注</th><th></th></tr></thead><tbody id=白表></tbody></table>";
   }else h+="<p class=desc>白名单是空的。</p>";
@@ -583,8 +583,8 @@ function 填表(d){
   const q=(document.getElementById("池滤").value||"").trim().toLowerCase();
   const 列=d.池||d.proxies||[];
   const 序=["刚提取","本批","上批","手加","退役"];
-  const 题={刚提取:"刚提取",本批:"本批新代理",上批:"上批仍在用",手加:"手加",退役:"交替下线"};
-  const 注={刚提取:"这一轮刚进池，还不到 45 秒",本批:"本轮换新加入的",上批:"上一轮留下的老代理，右侧是已用多久",手加:"不是提取来的",退役:"不再接新连接，回包走完就下"};
+  const 题={刚提取:"刚提取",本批:"本批新代理",上批:"上批还在干活",手加:"手加",退役:"交替下线"};
+  const 注={刚提取:"这一轮刚进池，还不到 45 秒",本批:"本轮换新加入的，满 5 分钟必下",上批:"未满寿且还挂着连接；空闲或到期的会收掉",手加:"不是提取来的",退役:"已到期，不再接新连接"};
   const 组={};
   序.forEach(k=>组[k]=[]);
   列.forEach(p=>{
