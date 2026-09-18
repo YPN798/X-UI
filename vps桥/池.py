@@ -67,13 +67,16 @@ def 遮(密: str) -> str:
     return f"{密[:4]}****{密[-4:]}" if len(密) > 8 else "****"
 
 
-def _白条(一: Any) -> dict[str, str]:
+def _白条(一: Any, 源: str = "") -> dict[str, str]:
     if not isinstance(一, dict):
-        return {"id": "", "ip": str(一 or ""), "备注": ""}
+        return {"id": "", "ip": str(一 or ""), "备注": "", "源": 源}
     return {
         "id": str(一.get("id") or 一.get("ID") or ""),
-        "ip": str(一.get("ip") or 一.get("IP") or 一.get("address") or ""),
-        "备注": str(一.get("remark") or 一.get("note") or ""),
+        "ip": str(一.get("ip") or 一.get("IP") or 一.get("address")
+                 or 一.get("user_ip") or 一.get("clientIp") or ""),
+        "备注": str(一.get("remark") or 一.get("note") or 一.get("mark")
+                  or 一.get("content") or ""),
+        "源": 源 or str(一.get("源") or ""),
     }
 
 
@@ -124,7 +127,7 @@ def 人读(n: int) -> str:
     "sc_cntry": "",
     "sc_state": "",
     "sc_city": "",
-    "sc_white": 0,
+    "sc_white": 1,
     # auto=各源各提，一家出错不挡其他；1024 写死可提，闪臣 / IPIPGO 有凭证才跟
     "provider": "auto",
     "go_base": "https://api.ipipgo.com",
@@ -144,8 +147,8 @@ def 人读(n: int) -> str:
     "p24_host": "us.1024proxy.io",
     "p24_port": 3000,
     "p24_time": 5,
-    "p24_white": 0,
-    "defaults_ver": 22,
+    "p24_white": 1,
+    "defaults_ver": 23,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -162,7 +165,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-18.13"
+版本 = "2026-09-18.14"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -510,6 +513,9 @@ class 池:
                 self.设["provider"] = "auto"
                 self.设["p24_white"] = 0
                 self.设["sc_white"] = 0
+            if 旧版 < 23:
+                self.设["sc_white"] = 1
+                self.设["p24_white"] = 1
             self.设["defaults_ver"] = 默认["defaults_ver"]
         if not str(self.设.get("p24_token") or "").strip():
             令 = _读环境令(self.径) or p24内置令
@@ -1233,9 +1239,8 @@ class 池:
         return time.time() < float(self.闪臣态.get("码锁到") or 0)
 
     def _要加白的源(self) -> tuple[bool, bool]:
-        选 = str(self.设.get("provider") or "auto").strip() or "auto"
-        闪 = self.闪臣开() and 选 in ("auto", "shanchen")
-        千 = self.p24开() and 选 in ("auto", "1024", "p24", "proxy1024")
+        闪 = self.闪臣开() and bool(str(self.设.get("sc_code") or "").strip())
+        千 = bool(self._1024令())
         return 闪, 千
 
     def _1024令(self) -> str:
@@ -1243,8 +1248,7 @@ class 池:
                 or _读环境令(self.径) or p24内置令)
 
     def 可自动白(self) -> bool:
-        # 白名单已手加。加白不再挡提取，开机也不再自动加
-        return False
+        return any(self._要加白的源())
 
     def _闪臣址(self, 名: str, 参: dict[str, Any]) -> str:
         # 海外动态流量走 global 这套 flow-api，不要再用 sch.shanchendaili.com
