@@ -37,7 +37,9 @@ button:disabled{opacity:.5; cursor:default}
 }
 .top button.pri{background:var(--acc); border-color:transparent; color:#061018; font-weight:650}
 main{max-width:1180px; margin:0 auto; padding:20px 20px 64px}
-.kpis{display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; margin-bottom:16px}
+.kpis{display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:12px; margin-bottom:16px}
+.chip.bad{border-color:var(--bad); color:var(--bad); background:var(--bad2)}
+.chip.ok{border-color:var(--ok); color:var(--ok); background:var(--ok2)}
 .kpi{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 14px 12px}
 .kpi .k{color:var(--muted); font-size:12px}
 .kpi .v{margin-top:6px; font-size:22px; font-weight:700; letter-spacing:-.03em}
@@ -147,6 +149,7 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
   <span class="chip"><i class="dot" id="活点"></i><span id="活文">连接中</span></span>
   <span class="chip">SOCKS <b id="顶听">—</b></span>
   <span class="chip">版本 <b id="顶版">—</b></span>
+  <span class="chip hide" id="墙片"><span id="墙文">墙检</span></span>
   <div class="spacer"></div>
   <a class="btn" href="/docs" target="_blank" rel="noopener">对接文档</a>
   <a class="btn hide" id="去面板" target="_blank" rel="noopener">X-UI 面板</a>
@@ -159,6 +162,7 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
     <div class="kpi"><div class="k">剩余额度</div><div class="v" id="k余额">—</div><div class="s" id="k余额说">提取源</div></div>
     <div class="kpi"><div class="k">当前地区</div><div class="v" id="k地区">—</div><div class="s" id="k地区说">出口分布</div></div>
     <div class="kpi"><div class="k">下次换新</div><div class="v" id="k换">—</div><div class="s" id="k换说">自动换新</div></div>
+    <div class="kpi"><div class="k">国内连通</div><div class="v" id="k墙">—</div><div class="s" id="k墙说">墙检</div></div>
   </section>
   <nav class="tabs" id="页签">
     <button data-tab="概览" class="on">概览</button>
@@ -177,7 +181,7 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
       </div>
       <div class="card">
         <h2>最近动作</h2>
-        <p class="desc">换新、补池、验活、自动更新。</p>
+        <p class="desc">换新、补池、验活、自动更新、墙检。</p>
         <div id="概览右"></div>
       </div>
     </div>
@@ -292,6 +296,11 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
           <select name="auto_update"><option value="1">开</option><option value="0">关</option></select>
         </label>
         <label class="f">多少分钟查一次 <input name="update_minutes" type="number" min="1" max="10080"></label>
+        <label class="f">国内墙检
+          <select name="wall_check"><option value="1">开</option><option value="0">关</option></select>
+        </label>
+        <label class="f">墙检间隔分钟 <input name="wall_minutes" type="number" min="5" max="1440"></label>
+        <label class="f">墙检端口 <input name="wall_port" type="number" min="0" max="65535" placeholder="0=自动认 Xray"></label>
         <label class="f wide">别家提取接口 fetch_url<span id="盖"></span>
           <input name="fetch_url" placeholder="用闪臣 / IPIPGO 就不用填">
         </label>
@@ -299,6 +308,7 @@ code{font-family:ui-monospace,Consolas,monospace; font-size:12px; background:#0d
         <div class="actions" style="grid-column:1/-1">
           <button class="btn pri" type="submit" id="存高级">保存设置</button>
           <button class="btn" type="button" id="更新">现在检查更新</button>
+          <button class="btn" type="button" id="查墙">立刻查是否被墙</button>
           <button class="btn" type="button" id="清量">流量计数清零</button>
         </div>
       </form>
@@ -558,6 +568,16 @@ function 填(d){
   const 秒=d.下次换;
   document.getElementById("k换").textContent=(秒>=0)?(Math.floor(秒/60)+" 分"): "关";
   document.getElementById("k换说").textContent=d.换说||"—";
+  const 墙态=d.墙态||"";
+  const 墙名={墙:"疑似被墙",通:"国内可连",本机未听:"本机未听",未知:"未判定"};
+  document.getElementById("k墙").textContent=墙名[墙态]||(墙态||"—");
+  document.getElementById("k墙说").textContent=d.墙说||(d.wall_check?"约 1 分钟后首次检查":"墙检已关");
+  const 片=document.getElementById("墙片");
+  const 文=document.getElementById("墙文");
+  if(墙态==="墙"){ 片.className="chip bad"; 文.textContent="疑似被墙"; 片.classList.remove("hide"); }
+  else if(墙态==="通"){ 片.className="chip ok"; 文.textContent="国内可连"; 片.classList.remove("hide"); }
+  else if(墙态==="本机未听"){ 片.className="chip bad"; 文.textContent="端口未听"; 片.classList.remove("hide"); }
+  else { 片.className="chip hide"; }
 
   document.getElementById("概览左").innerHTML=
     行("SOCKS", esc(d.listen))+
@@ -568,6 +588,7 @@ function 填(d){
     行("每批", (d.sc_count||100)+" 条")+
     行("自动换新", esc(d.换说||"关"))+
     行("自动更新", d.auto_update?("每 "+(d.update_minutes||5)+" 分钟"):"关")+
+    行("墙检", esc(d.墙说||(d.wall_check?"待查":"关")))+
     行("今日消耗", esc(d.今日合计文||"0 B"))+
     行("累计流量", "上 "+esc(d.总上行文||"0 B")+" / 下 "+esc(d.总下行文||"0 B"));
   document.getElementById("概览右").innerHTML=
@@ -596,6 +617,9 @@ function 填(d){
     塞(f,"auto_rotate",d.auto_rotate||0);
     塞(f,"auto_update",String(d.auto_update?1:0));
     塞(f,"update_minutes",d.update_minutes||5);
+    塞(f,"wall_check",String(d.wall_check?1:0));
+    塞(f,"wall_minutes",d.wall_minutes||10);
+    塞(f,"wall_port",d.wall_port||0);
     塞(f,"fetch_scheme",d.fetch_scheme||"");
     塞(f,"sc_count",d.sc_count||100);
     塞(f,"sc_time",String(d.sc_time==null?0:d.sc_time));
@@ -675,7 +699,9 @@ document.getElementById("设").onsubmit=e=>{
       sc_protocol:f.sc_protocol.value, sc_cntry:f.sc_cntry.value.trim(),
       sc_state:f.sc_state.value.trim(), sc_city:f.sc_city.value.trim(),
       sc_white:+f.sc_white.value,
-      auto_update:+f.auto_update.value, update_minutes:+f.update_minutes.value
+      auto_update:+f.auto_update.value, update_minutes:+f.update_minutes.value,
+      wall_check:+f.wall_check.value, wall_minutes:+f.wall_minutes.value,
+      wall_port:+f.wall_port.value
     });
     脏["设"]=0;
     return "设置已保存";
@@ -690,6 +716,8 @@ document.getElementById("刷闪").onclick=()=>忙("刷闪","刷新中…",async(
 });
 document.getElementById("更新").onclick=()=>忙("更新","检查中…",async()=>
   (await api("/api/update",{})).msg);
+document.getElementById("查墙").onclick=()=>忙("查墙","国内回探中…",async()=>
+  (await api("/api/wall",{})).msg);
 document.getElementById("补").onclick=()=>忙("补","补池中…",async()=>
   (await api("/api/fill",{})).msg);
 document.getElementById("换").onclick=()=>忙("换","换新中…",async()=>

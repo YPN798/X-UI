@@ -453,3 +453,28 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
             await asyncio.wait_for(停.wait(), timeout=等到)
         except asyncio.TimeoutError:
             pass
+
+
+async def 查墙循环(池子: 池, 停: asyncio.Event) -> None:
+    """请大陆检测点回连节点端口。本机在听而国内全超时，才标疑似被墙。"""
+    try:
+        await asyncio.wait_for(停.wait(), timeout=50)
+        return
+    except asyncio.TimeoutError:
+        pass
+    while not 停.is_set():
+        开 = int(池子.设.get("wall_check") or 0)
+        if 开:
+            try:
+                await asyncio.to_thread(池子.查墙一次)
+            except Exception as 错:
+                池子.墙态 = "未知"
+                池子.墙说 = f"{time.strftime('%H:%M:%S')} 墙检查出错：{错}"
+                日志.warning("%s", 池子.墙说)
+        分 = int(池子.设.get("wall_minutes") or 10) if 开 else 5
+        分 = max(5, min(1440, 分))
+        try:
+            await asyncio.wait_for(停.wait(), timeout=分 * 60)
+            return
+        except asyncio.TimeoutError:
+            continue

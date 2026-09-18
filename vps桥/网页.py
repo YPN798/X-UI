@@ -72,6 +72,7 @@ _饼干名 = "xui_bridge"
     {"method": "POST", "path": "/api/sc/unwhite", "desc": "从白名单删除", "body": {"id": "", "ip": ""}},
     {"method": "POST", "path": "/api/sc/refresh", "desc": "刷新余额和白名单"},
     {"method": "POST", "path": "/api/update", "desc": "立刻检查并更新桥代码"},
+    {"method": "POST", "path": "/api/wall", "desc": "立刻做一次国内回探，看节点端口是否被墙"},
     {"method": "GET", "path": "/api/stats", "desc": "每日流量：今日消耗 + 最近 60 天表"},
     {"method": "POST", "path": "/api/traffic/reset", "desc": "累计流量从现在重新算（日表保留）"},
     {"method": "POST", "path": "/api/passwd", "desc": "改管理密码", "body": {"web_pass": "新密码"}},
@@ -98,7 +99,8 @@ def 接口目录() -> dict:
         },
         "接口": [dict(一) for 一 in 接口表],
         "字段": {
-            "health": ["版本", "listen", "web", "健康", "总数", "供应商", "这批地区", "上次补", "上次换新"],
+            "health": ["版本", "listen", "web", "健康", "总数", "供应商", "这批地区",
+                       "上次补", "上次换新", "墙态", "墙说", "墙口"],
             "池条目": ["号", "地址", "方案", "来源", "退役", "启用", "健康", "失败", "连接",
                       "上行", "下行", "上行文", "下行文", "出口", "上次错误", "上次切换"],
             "日表条目": ["日", "上行", "下行", "合计", "上行文", "下行文", "合计文"],
@@ -107,7 +109,8 @@ def 接口目录() -> dict:
                     "provider", "go_base", "go_key", "go_url", "go_user", "go_host",
                     "pool_size", "fail_n", "check_interval", "check_conc", "connect_timeout",
                     "auto_rotate", "sc_count", "sc_time", "sc_white", "go_port",
-                    "auto_update", "update_minutes", "sc_code", "go_pass", "随机国库"],
+                    "auto_update", "update_minutes", "wall_check", "wall_minutes",
+                    "wall_port", "sc_code", "go_pass", "随机国库"],
             "出厂随机国库": list(默随机国库),
             "国名": dict(国名表),
         },
@@ -126,6 +129,9 @@ def 健康视图(池子: 池) -> dict:
         "这批地区": 池子.这批地区,
         "上次补": 池子.上次补,
         "上次换新": 池子.上次换新,
+        "墙态": 池子.墙态,
+        "墙说": 池子.墙说,
+        "墙口": 池子.墙口,
     }
 
 
@@ -606,6 +612,10 @@ async def 处理管理(读, 写, 池子: 池) -> None:
             from 更新 import 更新一次
             说 = await 更新一次(池子)
             _json(写, 200, {"ok": True, "msg": 说})
+        elif 法 == "POST" and 路 == "/api/wall":
+            说 = await asyncio.to_thread(池子.查墙一次)
+            _json(写, 200, {"ok": True, "msg": 说, "墙态": 池子.墙态,
+                            "墙说": 池子.墙说, "墙口": 池子.墙口})
         elif 法 == "GET" and 路 == "/api/stats":
             身 = 池子.日统计()
             身["ok"] = True

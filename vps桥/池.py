@@ -7,11 +7,12 @@ import asyncio
 import json
 import logging
 import random
+import socket
 import time
 import uuid
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
 from 解析 import 本机主机, 拆, 给上游, 规范协议
@@ -122,18 +123,22 @@ def 人读(n: int) -> str:
     "go_pass": "",
     "go_host": "proxy.ipipgo.com",
     "go_port": 1080,
-    "defaults_ver": 15,
+    "defaults_ver": 16,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
     "update_minutes": 5,
     "update_base": "https://raw.githubusercontent.com/YPN798/X-UI/main",
+    # 请国内检测点回连本机节点端口。0=关。wall_port=0 则从 Xray 入站自动认
+    "wall_check": 1,
+    "wall_minutes": 10,
+    "wall_port": 0,
     "随机国库": ["JP", "KR", "SG", "TH", "VN", "MY", "PH", "ID", "BR"],
     "proxies": [],
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-17.18"
+版本 = "2026-09-18.1"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -247,6 +252,10 @@ class 池:
         self.换基 = 0.0
         self.上轮验活 = ""
         self.更新说 = ""
+        self.墙态 = ""
+        self.墙说 = ""
+        self.墙口 = 0
+        self._墙检中 = False
         self.设: dict[str, Any] = dict(默认)
         self.条们: list[条] = []
         self.闪臣态: dict[str, Any] = {
@@ -319,25 +328,26 @@ class 池:
             if 旧版 < 10:
                 self.设["pool_size"] = 默认["pool_size"]
                 self.设["sc_count"] = 默认["sc_count"]
-            if 旧版 < 11 or 旧版 > 11:
-                self.设["sc_time"] = 默认["sc_time"]
-                self.设["pool_size"] = 默认["pool_size"]
-                self.设["sc_count"] = 默认["sc_count"]
-            if 旧版 < 12 or 旧版 > 12:
-                self.设["sc_count"] = 默认["sc_count"]
-                self.设["pool_size"] = 默认["pool_size"]
-            if 旧版 != 13:
-                self.设["sc_time"] = 默认["sc_time"]
-                self.设["sc_count"] = 默认["sc_count"]
-                self.设["pool_size"] = 默认["pool_size"]
-            if 旧版 != 14:
-                self.设["sc_time"] = 默认["sc_time"]
-                self.设["sc_count"] = 默认["sc_count"]
-                self.设["pool_size"] = 默认["pool_size"]
-            if 旧版 != 15:
-                self.设["sc_time"] = 默认["sc_time"]
-                self.设["sc_count"] = 默认["sc_count"]
-                self.设["pool_size"] = 默认["pool_size"]
+            if 旧版 < 15:
+                if 旧版 < 11 or 旧版 > 11:
+                    self.设["sc_time"] = 默认["sc_time"]
+                    self.设["pool_size"] = 默认["pool_size"]
+                    self.设["sc_count"] = 默认["sc_count"]
+                if 旧版 < 12 or 旧版 > 12:
+                    self.设["sc_count"] = 默认["sc_count"]
+                    self.设["pool_size"] = 默认["pool_size"]
+                if 旧版 != 13:
+                    self.设["sc_time"] = 默认["sc_time"]
+                    self.设["sc_count"] = 默认["sc_count"]
+                    self.设["pool_size"] = 默认["pool_size"]
+                if 旧版 != 14:
+                    self.设["sc_time"] = 默认["sc_time"]
+                    self.设["sc_count"] = 默认["sc_count"]
+                    self.设["pool_size"] = 默认["pool_size"]
+            if 旧版 < 16:
+                self.设["wall_check"] = 默认["wall_check"]
+                self.设["wall_minutes"] = 默认["wall_minutes"]
+                self.设["wall_port"] = 默认["wall_port"]
             self.设["defaults_ver"] = 默认["defaults_ver"]
         self.条们 = []
         for 一 in 原.get("proxies") or []:
@@ -404,6 +414,9 @@ class 池:
             "auto_update": int(self.设.get("auto_update") or 0),
             "update_minutes": self.查更分(),
             "update_base": self.设.get("update_base") or 默认["update_base"],
+            "wall_check": int(self.设.get("wall_check") or 0),
+            "wall_minutes": int(self.设.get("wall_minutes") or 10),
+            "wall_port": int(self.设.get("wall_port") or 0),
             "随机国库": self.国库(),
             # 来源必须一起存，否则重启后拉取来的全变成手加，换新再也换不掉它们
             "proxies": [{"串": 一.串(), "来源": 一.来源} for 一 in self.条们 if not 一.退役],
@@ -447,6 +460,12 @@ class 池:
             # 旧状态文件没有累计项，用各条之和垫上，别让已有的量凭空消失
             self.总上行 = sum(int(一.get("上行") or 0) for 一 in 条们)
             self.总下行 = sum(int(一.get("下行") or 0) for 一 in 条们)
+        self.墙态 = str(文.get("墙态") or self.墙态)
+        self.墙说 = str(文.get("墙说") or self.墙说)
+        try:
+            self.墙口 = int(文.get("墙口") or 0)
+        except (TypeError, ValueError):
+            self.墙口 = 0
         日 = 文.get("日流量")
         if isinstance(日, dict):
             桶: dict[str, dict[str, int]] = {}
@@ -465,6 +484,9 @@ class 池:
             "这批地区": self.这批地区,
             "上次源": self.上次源,
             "上轮验活": self.上轮验活,
+            "墙态": self.墙态,
+            "墙说": self.墙说,
+            "墙口": self.墙口,
             "模式": self.设["mode"],
             "粘住": self.设["sticky"],
             "起算": self.起算,
@@ -547,7 +569,8 @@ class 池:
                     self.设[k] = str(补[k]).strip()
             for k in ("pool_size", "fail_n", "check_interval", "check_conc",
                       "connect_timeout", "auto_rotate", "sc_count", "sc_time", "sc_white",
-                      "go_port", "auto_update", "update_minutes"):
+                      "go_port", "auto_update", "update_minutes",
+                      "wall_check", "wall_minutes", "wall_port"):
                 if k in 补 and 补[k] not in (None, ""):
                     self.设[k] = int(补[k])
             # 安全码 / IPIPGO 密码只写：页面永远不回显，留空表示保持原样
@@ -951,6 +974,194 @@ class 池:
         self.查余额()
         self.查白名单()
         self.闪臣态["刷时间"] = time.strftime("%H:%M:%S")
+
+    def 节点端口们(self) -> list[int]:
+        """墙检要打的入站端口。填了 wall_port 就用它，否则读 Xray 配置。"""
+        指定 = int(self.设.get("wall_port") or 0)
+        if 指定 > 0:
+            return [指定]
+        口: list[int] = []
+        for p in (
+            Path("/usr/local/x-ui/bin/config.json"),
+            Path("/usr/local/x-ui-yg/bin/config.json"),
+        ):
+            if not p.is_file():
+                continue
+            try:
+                d = json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(d, dict):
+                continue
+            for ib in d.get("inbounds") or []:
+                if not isinstance(ib, dict):
+                    continue
+                if ib.get("tag") == "api" or ib.get("protocol") in ("dokodemo-door",):
+                    continue
+                n = ib.get("port")
+                try:
+                    n = int(n)
+                except (TypeError, ValueError):
+                    continue
+                if n in (self.听口(), self.网页口()) or n <= 0 or n > 65535:
+                    continue
+                if n not in 口:
+                    口.append(n)
+        口.sort(key=lambda n: (0 if n in (443, 8443) else 1 if n in (80, 8080) else 2, n))
+        return 口
+
+    def 口在听(self, 口: int) -> bool:
+        十六 = f"{int(口):04X}"
+        for p in (Path("/proc/net/tcp"), Path("/proc/net/tcp6")):
+            if not p.is_file():
+                continue
+            try:
+                for 行 in p.read_text(encoding="utf-8", errors="replace").splitlines()[1:]:
+                    段 = 行.split()
+                    if len(段) < 4:
+                        continue
+                    本地 = 段[1]
+                    if 段[3] == "0A" and 本地.rsplit(":", 1)[-1].upper() == 十六:
+                        return True
+            except OSError:
+                continue
+        主们 = ["127.0.0.1", "::1"]
+        缓存 = str(self.闪臣态.get("本机IP") or "")
+        if 缓存:
+            主们.append(缓存)
+        for 主 in 主们:
+            try:
+                s = socket.create_connection((主, 口), timeout=1.5)
+                s.close()
+                return True
+            except OSError:
+                continue
+        return False
+
+    def _墙取json(self, 址: str, 秒: float = 20) -> Any:
+        求 = Request(址, headers={
+            "User-Agent": "xui-bridge",
+            "Accept": "application/json",
+        })
+        with urlopen(求, timeout=秒) as r:
+            return json.loads(r.read().decode("utf-8", "replace") or "null")
+
+    def _大陆节点(self) -> list[str]:
+        try:
+            包 = self._墙取json("https://check-host.net/nodes/hosts")
+        except Exception as 错:
+            raise OSError(f"拿检测节点失败：{错}") from 错
+        表 = 包.get("nodes") if isinstance(包, dict) else 包
+        if not isinstance(表, dict):
+            return []
+        出 = []
+        for 名, 信 in 表.items():
+            列 = 信 if isinstance(信, (list, tuple)) else [信]
+            文 = " ".join(str(x) for x in 列).lower()
+            码 = str(列[0] if 列 else "").lower()
+            if any(x in 文 for x in (
+                "hong kong", "hongkong", "taiwan", "macau", "macao",
+                "香港", "台湾", "澳门",
+            )):
+                continue
+            if 码 == "cn" or "china" in 文 or "中国" in 文:
+                出.append(str(名))
+        return 出[:6]
+
+    def _节点通(self, 值: Any) -> bool | None:
+        if 值 is None:
+            return None
+        if isinstance(值, list) and 值:
+            一 = 值[0]
+            if isinstance(一, dict):
+                if 一.get("error"):
+                    return False
+                if 一.get("time") is not None:
+                    return True
+        return False
+
+    def 查墙一次(self) -> str:
+        """本机端口在听 + 请大陆节点 TCP 回连。阻塞，放线程里跑。"""
+        if self._墙检中:
+            return self.墙说 or "正在检查"
+        self._墙检中 = True
+        try:
+            口们 = self.节点端口们()
+            if not 口们:
+                self.墙态, self.墙口 = "未知", 0
+                self.墙说 = f"{time.strftime('%H:%M:%S')} 找不到节点端口，到设置里填「墙检端口」"
+                return self.墙说
+            口 = 口们[0]
+            self.墙口 = 口
+            if not self.口在听(口):
+                self.墙态 = "本机未听"
+                self.墙说 = f"{time.strftime('%H:%M:%S')} 端口 {口} 本机没在听，先查 x-ui / Xray"
+                return self.墙说
+            ip = self.本机出口IP()
+            if not ip:
+                self.墙态 = "未知"
+                self.墙说 = f"{time.strftime('%H:%M:%S')} 拿不到本机公网 IP"
+                return self.墙说
+            点 = self._大陆节点()
+            if not 点:
+                self.墙态 = "未知"
+                self.墙说 = f"{time.strftime('%H:%M:%S')} 检测网没有大陆节点，无法判断"
+                return self.墙说
+            目标 = f"[{ip}]:{口}" if ":" in ip and "." not in ip else f"{ip}:{口}"
+            q = "&".join(["host=" + quote(目标)] + [f"node={quote(一)}" for 一 in 点])
+            开 = self._墙取json("https://check-host.net/check-tcp?" + q)
+            if not isinstance(开, dict) or not 开.get("ok"):
+                self.墙态 = "未知"
+                self.墙说 = f"{time.strftime('%H:%M:%S')} 检测网没接单：{开}"
+                return self.墙说
+            号 = str(开.get("request_id") or "")
+            if not 号:
+                self.墙态 = "未知"
+                self.墙说 = f"{time.strftime('%H:%M:%S')} 检测网没给单号"
+                return self.墙说
+            果: dict = {}
+            for _ in range(8):
+                time.sleep(2)
+                一果 = self._墙取json(f"https://check-host.net/check-result/{号}")
+                if isinstance(一果, dict):
+                    果 = 一果
+                    if all(self._节点通(果.get(一)) is not None for 一 in 点):
+                        break
+            通 = 败 = 0
+            for 一 in 点:
+                v = self._节点通(果.get(一))
+                if v is True:
+                    通 += 1
+                elif v is False:
+                    败 += 1
+            总 = 通 + 败
+            if 总 <= 0:
+                self.墙态 = "未知"
+                self.墙说 = f"{time.strftime('%H:%M:%S')} 国内节点还没回结果 {目标}"
+            elif 通 <= 0:
+                self.墙态 = "墙"
+                self.墙说 = (
+                    f"{time.strftime('%H:%M:%S')} 疑似被墙：国内 {通}/{总} 通，"
+                    f"{目标} 本机在听"
+                )
+            else:
+                self.墙态 = "通"
+                self.墙说 = (
+                    f"{time.strftime('%H:%M:%S')} 国内能连：{通}/{总} 通，{目标}"
+                )
+            日志.info("墙检 %s", self.墙说)
+            return self.墙说
+        except Exception as 错:
+            self.墙态 = "未知"
+            self.墙说 = f"{time.strftime('%H:%M:%S')} 墙检查出错：{错}"
+            日志.warning("%s", self.墙说)
+            return self.墙说
+        finally:
+            self._墙检中 = False
+            try:
+                self.写状态()
+            except Exception:
+                pass
 
     async def 一键开跑(self, 键: str, 码: str, 供应商: str = "",
                     go_key: str = "", go_user: str = "", go_pass: str = "") -> list[str]:
@@ -1565,6 +1776,12 @@ class 池:
             "update_minutes": self.查更分(),
             "更新说": self.更新说,
             "上轮验活": self.上轮验活,
+            "墙态": self.墙态,
+            "墙说": self.墙说,
+            "墙口": self.墙口,
+            "wall_check": int(self.设.get("wall_check") or 0),
+            "wall_minutes": int(self.设.get("wall_minutes") or 10),
+            "wall_port": int(self.设.get("wall_port") or 0),
             "健康": len(self.健康们()),
             "总数": len(self.条们),
             "上行": sum(一.上行 for 一 in self.条们),
