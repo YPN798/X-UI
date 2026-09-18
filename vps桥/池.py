@@ -114,8 +114,8 @@ def 人读(n: int) -> str:
     "sc_state": "",
     "sc_city": "",
     "sc_white": 1,
-    # auto=谁有凭证用谁；多家都填则按上次成功的，失败换下一家
-    "provider": "auto",
+    # 1024 提取已写死，默认就用它。闪臣 / IPIPGO 仍可手选
+    "provider": "1024",
     "go_base": "https://api.ipipgo.com",
     "go_key": "",
     "go_url": "",
@@ -134,7 +134,7 @@ def 人读(n: int) -> str:
     "p24_port": 3000,
     "p24_time": 5,
     "p24_white": 1,
-    "defaults_ver": 20,
+    "defaults_ver": 21,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -151,11 +151,13 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-18.3"
+版本 = "2026-09-18.4"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
 p24主机 = "1024proxy"
+# 1024 白名单提取写死，不再跟面板国家/条数/时长走
+p24提取址 = "https://white.1024proxy.com/white/api?region=Rand&num=1&time=10&format=1&type=txt"
 # 换新后旧线路最多再留这么久：有连接的把回包走完，超时也从池里拿掉（套接字仍由转发握着）
 交叠秒 = 30
 # 工作池里的拉取线路最多活这么久，到点必须下，哪怕这轮一个都没验过
@@ -378,6 +380,9 @@ class 池:
                 self.设["p24_time"] = 默认["p24_time"]
             if 旧版 < 20:
                 self.设["proxy_on"] = 1
+            if 旧版 < 21:
+                self.设["provider"] = "1024"
+                self.设["p24_white"] = 1
             self.设["defaults_ver"] = 默认["defaults_ver"]
         self.条们 = []
         for 一 in 原.get("proxies") or []:
@@ -912,12 +917,8 @@ class 池:
         )
 
     def p24开(self) -> bool:
-        return bool(
-            str(self.设.get("p24_token") or "").strip()
-            or str(self.设.get("p24_url") or "").strip()
-            or (str(self.设.get("p24_user") or "").strip()
-                and str(self.设.get("p24_pass") or "").strip())
-        )
+        # 提取链接已写死，靠本机出口 IP 白名单鉴权，不必再填
+        return True
 
     def 当前源(self) -> str:
         序 = self.源顺序()
@@ -1735,13 +1736,17 @@ class 池:
         return self._补账密(出)
 
     def _补账密(self, 列: list[dict]) -> list[dict]:
-        户 = (str(self.设.get("go_user") or "").strip()
-              or str(self.设.get("p24_user") or "").strip())
-        密 = (str(self.设.get("go_pass") or "").strip()
-              or str(self.设.get("p24_pass") or "").strip())
-        if not (户 or 密):
-            return 列
+        # 1024 白名单提取是纯 IP:端口，不能把别家账密填上去
         for 一 in 列:
+            主 = str(一.get("主机") or "").lower()
+            if ipipgo主机 in 主:
+                户 = str(self.设.get("go_user") or "").strip()
+                密 = str(self.设.get("go_pass") or "").strip()
+            elif p24主机 in 主:
+                户 = str(self.设.get("p24_user") or "").strip()
+                密 = str(self.设.get("p24_pass") or "").strip()
+            else:
+                continue
             if 户 and not 一.get("用户"):
                 一["用户"] = 户
             if 密 and not 一.get("密码"):
@@ -1852,23 +1857,7 @@ class 池:
         return 国 if 国 else "Rand"
 
     def p24提取地址(self, 国: str = "", 州: str = "", 市: str = "", 数: int | None = None) -> str:
-        数 = self.提取条数(数)
-        区 = self._1024区(国)
-        址 = str(self.设.get("p24_url") or "").strip()
-        if not 址.startswith(("http://", "https://")):
-            址 = str(self.设.get("p24_white_api") or 默认["p24_white_api"]).strip()
-        if not 址.startswith(("http://", "https://")):
-            return ""
-        补: dict[str, Any] = {"region": 区, "num": 数, "format": 1, "type": "txt"}
-        if 州:
-            补["state"] = 州
-        if 市:
-            补["city"] = 市
-        if self._1024粘():
-            补["time"] = self._1024时()
-        else:
-            补["time"] = None
-        return self._改查询(址, 补)
+        return p24提取址
 
     def _1024入口(self, 国: str) -> tuple[str, int]:
         现 = str(self.设.get("p24_host") or "").strip() or 默认["p24_host"]
@@ -1906,19 +1895,15 @@ class 池:
         return 出
 
     def _抽1024(self, 国: str, 州: str, 市: str, 数: int) -> list[dict]:
-        址 = self.p24提取地址(国, 州, 市, 数)
-        出: list[dict] = []
-        if 址:
-            出 = self._抽一次(址, "")
-            if not 出 and self._1024令() and bool(int(self.设.get("p24_white") or 0)):
-                好, 白说 = self._1024加白()
-                日志.info("1024 提取空，自动加白名单：%s", 白说)
-                if 好:
-                    time.sleep(2)
-                    出 = self._抽一次(址, "")
-        if 出:
-            return 出
-        return self._1024账密批(国, 州, 市, 数)
+        址 = p24提取址
+        出 = self._抽一次(址, "")
+        if not 出 and self._1024令() and bool(int(self.设.get("p24_white") or 0)):
+            好, 白说 = self._1024加白()
+            日志.info("1024 提取空，自动加白名单：%s", 白说)
+            if 好:
+                time.sleep(2)
+                出 = self._抽一次(址, "")
+        return 出
 
     def _抽源(self, 源: str, 国: str, 州: str, 市: str, 数: int) -> list[dict]:
         if 源 == "ipipgo":
@@ -1928,6 +1913,8 @@ class 池:
         return self._抽地(国, 州, 市, 数)
 
     def 地区说(self) -> str:
+        if self.当前源() == "1024":
+            return "1024 Rand 粘性 10 分钟（写死）"
         钉 = 地区文(*self._钉地区())
         if 钉:
             return 钉
@@ -2044,7 +2031,8 @@ class 池:
 
         最后 = ""
         for 源 in 源们:
-            for 地 in self._地区候选(换国):
+            地们 = [("Rand", "", "")] if 源 == "1024" else self._地区候选(换国)
+            for 地 in 地们:
                 出 = self._抽满(源, *地, 数)
                 if 出:
                     self.上次源 = 源
