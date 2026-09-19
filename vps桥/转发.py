@@ -378,7 +378,6 @@ async def 收旧循环(池子: 池, 停: asyncio.Event) -> None:
 
 async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
     上次换 = 0.0
-    上次验 = 0.0
     上次刷 = 0.0
     空等 = 0.0
     if 池子.可自动白() and 池子.代理开():
@@ -399,12 +398,6 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
             except asyncio.TimeoutError:
                 continue
         await 池子.收旧()
-        间隔 = max(8, int(池子.设.get("check_interval") or 120))
-        秒 = float(池子.设.get("connect_timeout") or 8)
-        并发 = max(1, min(64, int(池子.设.get("check_conc") or 16)))
-        验主 = str(池子.设.get("check_host") or "www.dola.com").strip() or "www.dola.com"
-        验口 = int(池子.设.get("check_port") or 443)
-        门 = asyncio.Semaphore(并发)
         换期 = 池子.有效换期()
         现在 = time.monotonic()
         工作 = 池子.工作数()
@@ -438,57 +431,13 @@ async def 验活循环(池子: 池, 停: asyncio.Event) -> None:
                     日志.warning("刷闪臣状态失败：%s", 错)
             asyncio.create_task(后台刷())
 
-        async def 验(一: 条) -> None:
-            async with 门:
-                if 停.is_set():
-                    return
-                try:
-                    await 验一条(一, 秒, 验主, 验口)
-                    await 池子.报成(一)
-                except Exception as 错:
-                    await 池子.报败(一, str(错))
-
-        现在 = time.monotonic()
-        if 上次验 <= 0 or 现在 - 上次验 >= 间隔:
-            代 = int(池子.换代 or 0)
-            拷 = [一 for 一 in list(池子.条们)
-                  if 一.启用 and not 一.退役 and int(一.批次 or 0) == 代][:80]
-            起 = time.monotonic()
-            if 拷:
-                try:
-                    await asyncio.wait_for(
-                        asyncio.gather(*(验(一) for 一 in 拷)),
-                        timeout=40,
-                    )
-                except asyncio.TimeoutError:
-                    日志.warning("这轮验活超时，先往下走")
-            好 = len(池子.健康们())
-            池子.上轮验活 = f"{time.strftime('%H:%M:%S')} 验了 {len(拷)} 条，健康 {好}，用了 {time.monotonic() - 起:.0f} 秒"
-            上次验 = time.monotonic()
-
-        没探 = [一 for 一 in list(池子.条们)
-                if 一.启用 and 一.健康 and not 一.退役 and not 一.出口][:16]
-        if 没探:
-            async def 探(一: 条) -> None:
-                async with 门:
-                    if 停.is_set():
-                        return
-                    try:
-                        一.出口 = await 探出口(一, 秒)
-                    except Exception as 错:
-                        一.出口 = "? " + str(错)[:40]
-            try:
-                await asyncio.wait_for(asyncio.gather(*(探(一) for 一 in 没探)), timeout=20)
-            except asyncio.TimeoutError:
-                日志.warning("探出口超时，剩下的下一轮再探")
-
+        池子.上轮验活 = f"{time.strftime('%H:%M:%S')} 跳过验活，直接入池，工作 {池子.工作数()} 条"
         池子.换基 = 上次换
         池子.写状态()
-        日志.info("%s；下次换新约 %s 秒后，工作 %s 条", 池子.上轮验活, 池子.下次换秒(), 池子.工作数())
+        日志.info("%s；下次换新约 %s 秒后", 池子.上轮验活, 池子.下次换秒())
         现在 = time.monotonic()
-        下验 = 间隔 - (现在 - 上次验)
-        下换 = (换期 - (现在 - 上次换)) if 换期 else 间隔
-        等到 = 5 if 池子.工作数() <= 0 else max(1, min(15, 下验, 下换 if 下换 > 0 else 5))
+        下换 = (换期 - (现在 - 上次换)) if 换期 else 15
+        等到 = 5 if 池子.工作数() <= 0 else max(1, min(15, 下换 if 下换 > 0 else 5))
         try:
             await asyncio.wait_for(停.wait(), timeout=等到)
         except asyncio.TimeoutError:

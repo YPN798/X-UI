@@ -165,7 +165,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-19.3"
+版本 = "2026-09-19.4"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -1184,7 +1184,7 @@ class 池:
             asyncio.get_running_loop().create_task(跑())
             self._补中 = True
             if not str(self.上次补 or "").startswith("正在"):
-                self.上次补 = "正在补池并先验…"
+                self.上次补 = "正在补池…"
         except RuntimeError:
             pass
 
@@ -1192,7 +1192,7 @@ class 池:
         if self.换着():
             return self.上次补 or "上一次还在提取，等它结束"
         self._后台补齐()
-        return self.上次补 or "正在补池并先验…"
+        return self.上次补 or "正在补池…"
 
     async def 开始换新(self) -> str:
         if self.换着():
