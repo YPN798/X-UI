@@ -165,7 +165,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-19.2"
+版本 = "2026-09-19.3"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -887,6 +887,14 @@ class 池:
             return -1
         return max(0, int(换期 - (time.monotonic() - self.换基)))
 
+    def 工作数(self) -> int:
+        """还没到期的拉取条数。池空就该立刻补，不能等验活跑完。"""
+        now = time.monotonic()
+        return sum(
+            1 for 一 in self.条们
+            if self._提取的(一) and not 一.退役 and not self._过期了(一, now)
+        )
+
     def 健康们(self) -> list[条]:
         now = time.monotonic()
         return [一 for 一 in self.条们
@@ -949,7 +957,7 @@ class 池:
         return 0.0
 
     def _踢过期(self) -> int:
-        """到期的拉取立刻从名单拿掉。各源寿限独立。有连接也踢，会话由转发按剩余寿命掐。"""
+        """满 4 分钟的拉取立刻从名单拿掉。有连接也踢，会话由转发按剩余寿命掐。"""
         now = time.monotonic()
         留: list[条] = []
         丢 = 0
