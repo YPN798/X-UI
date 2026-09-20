@@ -285,7 +285,7 @@ tr.档-退役{opacity:.55}
   <section id="页-设置" class="hide">
     <div class="card">
       <h2>提取与地区</h2>
-      <p class="desc">这是提取规格（供应商侧 IP 能活多久），不是工作池使用时长。使用固定 3 分钟换新、最多 4 分钟。国家留空则每批随机。</p>
+      <p class="desc">这是提取规格（供应商侧 IP 能活多久），不是工作池使用时长。使用固定 3 分钟换新、最多 4 分钟。国家留空则闪臣和 1024 都从随机库各国混抽，再打乱入池。1024 不再全球 Rand。</p>
       <form id="设" class="form">
         <label class="f">闪臣单次条数
           <input name="sc_count" type="number" value="50" disabled title="写死 50 条">
@@ -363,7 +363,7 @@ tr.档-退役{opacity:.55}
     </div>
     <div class="card">
       <h2>随机地区</h2>
-      <p class="desc">三格国家留空时，每批从这里抽一个国家。可随时加减，至少留一个。</p>
+      <p class="desc">出厂：日本、韩国、新加坡、泰国、越南、马来西亚、菲律宾、印尼、巴西。三格国家留空时，闪臣和 1024 都从这里各国随机混抽，再打乱入池。可随时加减，至少留一个。</p>
       <div class="tags" id="国库"></div>
       <div class="rowbar">
         <input id="新国" placeholder="国家码，如 TW、US、DE" maxlength="8" style="text-transform:uppercase">

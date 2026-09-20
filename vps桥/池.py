@@ -123,7 +123,7 @@ def 人读(n: int) -> str:
     "sc_count": 50,
     "sc_time": 2,
     "sc_protocol": "s5",
-    # 三格留空=每批随机一国，一次提够指定条数。钉死了就按钉的提
+    # 三格留空=闪臣和 1024 都从随机国库各国混抽，再打乱。钉死了就按钉的提
     "sc_cntry": "",
     "sc_state": "",
     "sc_city": "",
@@ -165,7 +165,7 @@ def 人读(n: int) -> str:
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-19.4"
+版本 = "2026-09-20.1"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -177,11 +177,8 @@ p24主机 = "1024proxy"
 闪臣时档 = 2  # 提取规格：1-6 小时。工作池使用时长另算
 p24条数 = 50
 p24时分 = 30  # 提取规格：粘性 30 分钟。工作池使用时长另算
-# 1024 白名单提取写死，不再跟面板国家/条数/时长走
-p24提取址 = (
-    f"https://white.1024proxy.com/white/api"
-    f"?region=Rand&num={p24条数}&time={p24时分}&format=1&type=txt"
-)
+# 1024 条数/时长写死；地区跟随机国库走，不再用全球 Rand
+p24提取根 = "https://white.1024proxy.com/white/api"
 # 环境文件不上仓库；VPS 更新也拉不到。从本机环境文件落入，开机写进配置后不再问。
 p24内置令 = "36145e476d76242f71d4464f2271a107"
 
@@ -265,7 +262,7 @@ _抽态 = threading.local()
 池寿秒 = 240
 交叠秒 = 60
 
-# 三格留空时每批从配置里的随机国库抽一个。下面是出厂名单，面板和 API 都能加减。
+# 三格留空时闪臣和 1024 都从随机国库各国混抽。下面是出厂名单，面板和 API 都能加减。
 默随机国库 = (
     "JP", "KR", "SG", "TH", "VN", "MY", "PH", "ID", "BR",
 )
@@ -2203,11 +2200,18 @@ class 池:
         return p24时分
 
     def _1024区(self, 国: str) -> str:
-        国 = str(国 or "").strip()
-        return 国 if 国 else "Rand"
+        国 = 规范国码(国)
+        if 国:
+            return 国
+        库 = self.国库()
+        return 库[0] if 库 else "JP"
 
     def p24提取地址(self, 国: str = "", 州: str = "", 市: str = "", 数: int | None = None) -> str:
-        return p24提取址
+        区 = self._1024区(国)
+        n = self.提取条数(数, "1024")
+        return (
+            f"{p24提取根}?region={quote(区)}&num={n}&time={p24时分}&format=1&type=txt"
+        )
 
     def _1024入口(self, 国: str) -> tuple[str, int]:
         现 = str(self.设.get("p24_host") or "").strip() or 默认["p24_host"]
@@ -2245,7 +2249,61 @@ class 池:
         return 出
 
     def _抽1024(self, 国: str, 州: str, 市: str, 数: int) -> list[dict]:
+        国 = 规范国码(国)
+        if not 国:
+            出, _ = self._抽1024混地(数)
+            return 出
         return self._抽一次(self.p24提取地址(国, 州, 市, 数), "")
+
+    def _摊国(self, 数: int) -> list[tuple[str, int]]:
+        库 = list(self.国库())
+        if not 库 or 数 <= 0:
+            return []
+        random.shuffle(库)
+        基, 余 = divmod(数, len(库))
+        出: list[tuple[str, int]] = []
+        for i, 国 in enumerate(库):
+            n = 基 + (1 if i < 余 else 0)
+            if n > 0:
+                出.append((国, n))
+        return 出
+
+    def _抽源混地(self, 源: str, 数: int) -> tuple[list[dict], str]:
+        """按随机国库各国拆开提，再打乱。1024 不用全球 Rand。"""
+        摊 = self._摊国(数)
+        if not 摊:
+            return [], ""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        出: list[dict] = []
+        成: list[str] = []
+        with ThreadPoolExecutor(max_workers=min(9, len(摊))) as 工:
+            未 = {工.submit(self._抽源, 源, 国, "", "", n): 国 for 国, n in 摊}
+            for f in as_completed(未):
+                国 = 未[f]
+                try:
+                    批 = f.result() or []
+                except Exception as 错:
+                    日志.warning("%s %s 提取出错：%s", self.源名(源), 国, 错)
+                    批 = []
+                if 批:
+                    出.extend(批)
+                    成.append(国)
+        缺 = 数 - len(出)
+        if 缺 > 0:
+            for 国 in self._随机国序():
+                批 = self._抽源(源, 国, "", "", 缺)
+                if 批:
+                    出.extend(批)
+                    if 国 not in 成:
+                        成.append(国)
+                    break
+        random.shuffle(出)
+        出 = 出[:数]
+        return 出, "、".join(成) if 成 else ""
+
+    def _抽1024混地(self, 数: int) -> tuple[list[dict], str]:
+        return self._抽源混地("1024", 数)
 
     def _抽源(self, 源: str, 国: str, 州: str, 市: str, 数: int) -> list[dict]:
         try:
@@ -2263,18 +2321,19 @@ class 池:
 
     def 地区说(self) -> str:
         选 = str(self.设.get("provider") or "auto").strip() or "auto"
+        钉 = 地区文(*self._钉地区())
+        库 = "、".join(self.国库())
         if 选 == "auto":
+            if 钉:
+                return f"自动各源 · 钉死 {钉}"
             if self.这批地区:
                 return f"自动各源 · {self.这批地区}"
-            return "自动各源 · 一家出错不挡其他"
-        if self.当前源() == "1024":
-            return f"1024 Rand 粘性 {p24时分} 分钟（写死）"
-        钉 = 地区文(*self._钉地区())
+            return f"闪臣+1024 随机混抽 {库}"
         if 钉:
             return 钉
         if self.这批地区:
-            return f"每批一国 · 这批 {self.这批地区}"
-        return "每批一国 · 下次提取时随机"
+            return f"随机国库混抽 · 这批 {self.这批地区}"
+        return f"随机国库混抽 · {库}"
 
     def _记这批(self, 国: str, 州: str = "", 市: str = "") -> None:
         self.这批地区 = 地区文(国, 州, 市) or "随机"
@@ -2402,13 +2461,23 @@ class 池:
         """各源按自己写死的条数提。一家失败不挡其他。"""
         try:
             数 = self.提取条数(数 if 数 and 数 > 0 else None, 源)
-            地们 = [("Rand", "", "")] if 源 == "1024" else self._地区候选(换国)
-            地 = 地们[0] if 地们 else ("", "", "")
-            出 = self._抽源(源, *地, 数)
+            钉国, 钉州, 钉市 = self._钉地区()
+            if not (钉国 or 钉州 or 钉市):
+                出, 地 = self._抽源混地(源, 数)
+            else:
+                地们 = self._地区候选(换国)
+                出 = []
+                地 = ""
+                试 = 地们 if 多试地 else 地们[:1]
+                for 一地 in 试 or [("", "", "")]:
+                    出 = self._抽源(源, *一地, 数)
+                    if 出:
+                        地 = 地区文(*一地) or "随机"
+                        break
             if 出:
                 for 一 in 出:
                     一["_源"] = 源
-                return 出, 地区文(*地) or ("Rand" if 源 == "1024" else "随机"), ""
+                return 出, 地 or "随机国库", ""
             说 = str(getattr(_抽态, "说", "") or self.上次补
                      or f"{self.源名(源)} 提不到")
             return [], "", 说
@@ -2462,6 +2531,7 @@ class 池:
             else:
                 说们.append(f"{self.源名(源)} 跳过：{(说 or '提不到')[:80]}")
         if 合:
+            random.shuffle(合)
             self.上次源 = 成源[0] if len(成源) == 1 else "auto"
             self.这批地区 = "、".join(成地) if 成地 else "多源"
             self.上次补 = "自动：" + "；".join(说们)
@@ -2587,6 +2657,8 @@ class 池:
             self._标过期()
             self._收旧()
 
+        收: list[dict] = []
+
         async def 入信(信: dict) -> None:
             nonlocal 新成
             源 = str(信.pop("_源", "") or "")
@@ -2609,7 +2681,7 @@ class 池:
                     说们.append(f"{self.源名(源)} 还够 {活} 条，不提")
                     return
             try:
-                出, 地, 说 = await asyncio.to_thread(self._抽一源, 源, 要, 换国, False)
+                出, 地, 说 = await asyncio.to_thread(self._抽一源, 源, 要, 换国, True)
             except Exception as 错:
                 说们.append(f"{self.源名(源)} 提取出错：{错}")
                 return
@@ -2621,12 +2693,14 @@ class 池:
                 self.这批地区 = (
                     (self.这批地区 + "、") if self.这批地区 else ""
                 ) + f"{self.源名(源)} {地}"
-            for 信 in 出:
-                await 入信(信)
+            收.extend(出)
             说们.append(f"{self.源名(源)} 入 {len(出)} 条")
 
         if 源们:
             await asyncio.gather(*(跑源(源) for 源 in 源们))
+        random.shuffle(收)
+        for 信 in 收:
+            await 入信(信)
         丢 = 0
         async with self.锁:
             丢 = self._收闲上批() + self._收旧()
