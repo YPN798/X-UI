@@ -155,10 +155,18 @@
         "type": "field",
         "network": "tcp",
         "domain": [
-          "full:www.dola.com",
-          "full:dola.com",
-          "full:wss-normal-i18n.dola.com",
-          "domain:dola.com"
+          "domain:dola.com",
+          "domain:ciciai.com",
+          "domain:ibyteimg.com",
+          "domain:bytevcloudapi.com",
+          "domain:vodupload.com",
+          "domain:byteoversea.com",
+          "domain:byteintlapi.com",
+          "domain:bytedance.com",
+          "domain:bytedapm.com",
+          "domain:zijieapi.com",
+          "domain:ttwstatic.com",
+          "domain:yhgfb-cn-static.com"
         ],
         "outboundTag": "socks-proxy"
       },

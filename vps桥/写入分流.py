@@ -32,11 +32,20 @@ from pathlib import Path
     Path("/etc/x-ui-yg/x-ui-yg.db"),
 )
 原档 = Path("/etc/xui-bridge/xray模板.原")
+# 官网聊天/生成不只打 dola.com。HAR 里还有 CDN、图床、上传、长连接。
 域 = [
-    "full:www.dola.com",
-    "full:dola.com",
-    "full:wss-normal-i18n.dola.com",
     "domain:dola.com",
+    "domain:ciciai.com",
+    "domain:ibyteimg.com",
+    "domain:bytevcloudapi.com",
+    "domain:vodupload.com",
+    "domain:byteoversea.com",
+    "domain:byteintlapi.com",
+    "domain:bytedance.com",
+    "domain:bytedapm.com",
+    "domain:zijieapi.com",
+    "domain:ttwstatic.com",
+    "domain:yhgfb-cn-static.com",
 ]
 出站 = {
     "tag": "socks-proxy",
