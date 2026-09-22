@@ -1,5 +1,5 @@
 #!/bin/bash
-# 业务机一键：装桥 + 最低消耗分流指向 127.0.0.1:41000。不要在出口机上跑。
+# 业务机一键：装桥。分流默认关闭，恢复 X-UI 原设置。不要在出口机上跑。
 #   bash 安装.sh
 #   XUI_PROXY='socks5://用户:密码@1.2.3.4:1080' bash 安装.sh
 set -euo pipefail
@@ -60,44 +60,14 @@ PY
   fi
 }
 
-写xray(){
-  local db="" t
-  for t in /etc/x-ui-yg/x-ui-yg.db /etc/x-ui/x-ui.db; do
-    [[ -f $t ]] && db=$t && break
-  done
-  if [[ -z $db ]]; then
-    echo "没找到面板数据库，跳过写 Xray。装完面板后把 $根/最低消耗.json 贴进「Xray 配置」。"
-    return 0
-  fi
-  if ! command -v sqlite3 >/dev/null 2>&1; then
-    echo "没有 sqlite3，请手动在面板粘贴 $根/最低消耗.json"
-    return 0
-  fi
-  local tbl=""
-  for t in settings setting; do
-    sqlite3 "$db" "SELECT name FROM sqlite_master WHERE type='table' AND name='$t';" 2>/dev/null | grep -q "$t" && tbl=$t && break
-  done
-  if [[ -z $tbl ]]; then
-    echo "数据库里没有设置表，跳过写 Xray"
-    return 0
-  fi
-  if command -v systemctl >/dev/null 2>&1; then
-    systemctl stop x-ui >/dev/null 2>&1 || true
+关分流(){
+  if [[ -f /opt/xui-bridge/写入分流.py ]]; then
+    python3 /opt/xui-bridge/写入分流.py 关 || true
+  elif [[ -f "$根/写入分流.py" ]]; then
+    python3 "$根/写入分流.py" 关 || true
   else
-    rc-service x-ui stop >/dev/null 2>&1 || true
+    echo "没找到写入分流.py，面板若已写过桥规则，请稍后在管理页确认代理是关的"
   fi
-  sleep 1
-  if sqlite3 "$db" "SELECT 1 FROM $tbl WHERE key='xrayTemplateConfig' LIMIT 1;" | grep -q 1; then
-    sqlite3 "$db" "UPDATE $tbl SET value=readfile('$根/最低消耗.json') WHERE key='xrayTemplateConfig';"
-  else
-    sqlite3 "$db" "INSERT INTO $tbl (key,value) VALUES ('xrayTemplateConfig', readfile('$根/最低消耗.json'));"
-  fi
-  if command -v systemctl >/dev/null 2>&1; then
-    systemctl start x-ui >/dev/null 2>&1 || true
-  else
-    rc-service x-ui start >/dev/null 2>&1 || true
-  fi
-  echo "已写入最低消耗 Xray（3 个主机 → 127.0.0.1:41000）"
 }
 
 装依赖
@@ -109,7 +79,7 @@ cp -f "$根/xui-bridge.service" /etc/systemd/system/xui-bridge.service
 systemctl daemon-reload
 systemctl enable xui-bridge
 systemctl restart xui-bridge
-写xray
+关分流
 sleep 1
 systemctl --no-pager --full status xui-bridge || true
 echo

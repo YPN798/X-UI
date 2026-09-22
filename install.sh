@@ -3141,19 +3141,12 @@ echo
 yellow "请立刻保存以上信息。"
 }
 
-# 装/更新桥，写入最低消耗，打印全部访问信息
+# 装/更新桥。分流默认关闭，把面板尽量恢复成写分流前；用户在管理页手动打开才再写。
 finish_bridge(){
 install_bridge || { red "桥未装上"; return 1; }
-# 已经有模板的机器多半是别人配好的，整份换成最低消耗会把人家的配置抹掉。
-# 写入分流.py 只往里加出站和规则，不动其余部分，老机器走它就够了。
-if [[ -f /tmp/xui-bridge/最低消耗.json ]] && ! has_tpl; then
-XUI_TPL=/tmp/xui-bridge/最低消耗.json apply_tpl || true
-elif has_tpl; then
-yellow "面板里已有 Xray 配置模板，不整份替换，只往里加 dola 分流"
 seed_bridge
-fi
 if [[ -f /opt/xui-bridge/写入分流.py ]]; then
-python3 /opt/xui-bridge/写入分流.py && green "已把 dola 分流写进 Xray（走 127.0.0.1:41000）"
+python3 /opt/xui-bridge/写入分流.py 关 && green "桥分流已关，X-UI 保持原设置。要走代理请在桥管理页手动打开"
 fi
 }
 
@@ -3175,7 +3168,7 @@ v=$(sqlite3 "$db" "SELECT length(value) FROM $tbl WHERE key='xrayTemplateConfig'
 # 全自动安装：不问任何问题。已有面板则只补桥和分流。
 auto_install(){
 if [[ -f /usr/local/x-ui/x-ui ]]; then
-yellow "检测到已安装 x-ui，跳过面板，只更新桥和最低消耗分流"
+yellow "检测到已安装 x-ui，跳过面板，只更新桥并关闭分流"
 finish_bridge
 print_access
 return 0

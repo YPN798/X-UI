@@ -44,7 +44,7 @@
   "p24_port": 3000,
   "p24_time": 30,
   "p24_white": 1,
-  "defaults_ver": 24,
+  "defaults_ver": 25,
   "web_pass": "YPN940815...",
   "auto_update": 1,
   "update_minutes": 5,
@@ -52,7 +52,7 @@
   "wall_check": 1,
   "wall_minutes": 10,
   "wall_port": 0,
-  "proxy_on": 1,
+  "proxy_on": 0,
   "随机国库": ["JP", "KR", "SG", "TH", "VN", "MY", "PH", "ID", "BR"],
   "proxies": []
 }

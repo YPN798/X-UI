@@ -148,7 +148,7 @@ def 人读(n: int) -> str:
     "p24_port": 3000,
     "p24_time": 30,
     "p24_white": 1,
-    "defaults_ver": 24,
+    "defaults_ver": 25,
     "web_pass": "YPN940815...",
     # 自己去仓库拉新代码。auto_update 0=关，1=开
     "auto_update": 1,
@@ -158,14 +158,14 @@ def 人读(n: int) -> str:
     "wall_check": 1,
     "wall_minutes": 10,
     "wall_port": 0,
-    # 0=关掉桥分流，恢复 X-UI 原设置；1=dola 走 127.0.0.1:41000
-    "proxy_on": 1,
+    # 0=关掉桥分流并恢复 X-UI 原设置（默认）；1=用户手动打开后 dola 才走 127.0.0.1:41000
+    "proxy_on": 0,
     "随机国库": ["JP", "KR", "SG", "TH", "VN", "MY", "PH", "ID", "BR"],
     "proxies": [],
 }
 
 # 面板右上角显示，好核对 VPS 上跑的到底是不是最新代码
-版本 = "2026-09-21.1"
+版本 = "2026-09-22.1"
 
 闪臣主机 = "shanchendaili.com"
 ipipgo主机 = "ipipgo.com"
@@ -529,6 +529,9 @@ class 池:
             if 旧版 < 24:
                 self.设["sc_white"] = 1
                 self.设["p24_white"] = 1
+            if 旧版 < 25:
+                # 这次起默认全关。以前开着的也关掉，开机走关分流，把面板恢复成写分流前
+                self.设["proxy_on"] = 0
             self.设["defaults_ver"] = 默认["defaults_ver"]
         要升 = self._钉死提取() or 要升
         if not str(self.设.get("p24_token") or "").strip():

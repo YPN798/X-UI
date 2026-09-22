@@ -90,4 +90,4 @@ fi
 
 echo
 echo "面板上会显示版本号，刷新页面记得 Ctrl+Shift+R。"
-echo "分流没生效的话再跑：python3 $DEST/写入分流.py"
+echo "桥分流默认关闭，X-UI 会恢复原设置。要走代理请在管理页手动打开。"
